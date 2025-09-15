@@ -17,7 +17,7 @@ export default function LoginPage() {
       email,
       options: {
         // redirige a tu sitio (home). Debe coincidir con Auth redirect URL en Supabase.
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/`,
+     emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
       },
     });
 
