@@ -2,5 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light dark; }
-body { @apply bg-white text-neutral-900 antialiased; }
+html, body {
+  height: 100%;
+}
