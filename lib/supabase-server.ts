@@ -1,27 +1,30 @@
-// app/auth/callback/route.ts
-import { NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabase-server';
+// /lib/supabase-server.ts
+'use server';
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const code = url.searchParams.get('code');
+import { cookies } from 'next/headers';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
-  // Si no viene el código, vuelve al home o al login
-  if (!code) {
-    return NextResponse.redirect(new URL('/', req.url));
-  }
+export function supabaseServer() {
+  const cookieStore = cookies();
 
-  // 👇 OJO: aquí SÍ va el await
-  const supabase = await supabaseServer();
-
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-  if (error) {
-    const to = new URL('/login', req.url);
-    to.searchParams.set('error', error.message);
-    return NextResponse.redirect(to);
-  }
-
-  // Listo: sesión creada. Redirige al home (o donde prefieras)
-  return NextResponse.redirect(new URL('/', req.url));
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options?: CookieOptions) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options?: CookieOptions) {
+          cookieStore.set({ name, value: '', ...options, expires: new Date(0) });
+        },
+      },
+    }
+  );
 }
+
+// ✅ Exportación explícita para que Vercel lo detecte bien
+export default supabaseServer;
