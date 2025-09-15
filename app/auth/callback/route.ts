@@ -1,23 +1,24 @@
 // /app/auth/callback/route.ts
 import { NextResponse } from 'next/server';
-import supabaseServer from '@/lib/supabase-server'; // ⬅️ default import
+import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
+  const next = url.searchParams.get('next') ?? '/';
 
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? '/';
   if (!code) {
-    return NextResponse.redirect(`${base}/login?error=missing_code`);
+    return NextResponse.redirect(new URL('/login?error=missing_code', url.origin));
   }
 
-  const supabase = supabaseServer(); // ⬅️ SIN await
+  const supabase = await supabaseServer();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    return NextResponse.redirect(`${base}/login?error=auth`);
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin)
+    );
   }
 
-  // Opcional: crear/actualizar perfil aquí, o confías en tu acción upsertProfile()
-  return NextResponse.redirect(`${base}/login?ok=1`);
+  return NextResponse.redirect(new URL(next, url.origin));
 }
