@@ -1,14 +1,13 @@
+// /app/page.tsx  (REEMPLAZA TODO EL ARCHIVO)
 import Link from 'next/link';
-import AuthHashForwarder from './_components/AuthHashForwarder';
 import { supabaseServer } from '@/lib/supabase-server';
-import AuthCodeRedirectClient from './AuthCodeRedirectClient';
 
-function countReactions(reactions: { kind: 'heart' | 'fire' }[] = [], kind: 'heart' | 'fire') {
-  return reactions.filter((r) => r.kind === kind).length;
+function countReactions(reactions: { kind: string }[] = [], kind: 'heart' | 'fire') {
+  return reactions.filter(r => r.kind === kind).length;
 }
 
 async function fetchFeed() {
-  const supabase = supabaseServer(); // ← sin await
+  const supabase = await supabaseServer();
   const { data } = await supabase
     .from('posts')
     .select(`
@@ -18,7 +17,6 @@ async function fetchFeed() {
     `)
     .order('created_at', { ascending: false })
     .limit(50);
-
   return data ?? [];
 }
 
@@ -27,9 +25,21 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-6">
-     <AuthHashForwarder />
-      {/* NUEVO: detecta code/hash y redirige al callback */}
-      <AuthCodeRedirectClient />
+      {/* ⬇️ Captura #access_token/#refresh_token y los manda a /auth/callback */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function () {
+              var h = location.hash;
+              if (h && (h.includes('access_token=') || h.includes('refresh_token='))) {
+                var qs = new URLSearchParams(h.slice(1)).toString();
+                // Usa replace para no dejar el hash en el historial
+                location.replace('/auth/callback?' + qs);
+              }
+            })();
+          `,
+        }}
+      />
 
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Feed</h1>
@@ -41,7 +51,9 @@ export default async function HomePage() {
       {feed.map((p: any) => (
         <article key={p.id} className="border rounded-xl p-4 flex gap-3">
           <div className="w-16 h-16 rounded overflow-hidden bg-neutral-100 shrink-0">
-            {p.cover_url ? <img src={p.cover_url} alt="" className="w-full h-full object-cover" /> : null}
+            {p.cover_url ? (
+              <img src={p.cover_url} alt="" className="w-full h-full object-cover" />
+            ) : null}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm text-neutral-500">
