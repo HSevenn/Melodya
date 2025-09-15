@@ -1,28 +1,23 @@
-// app/auth/callback/route.ts
+// /app/auth/callback/route.ts
 import { NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabase-server';
-import { upsertProfile } from '@/app/actions';
+import supabaseServer from '@/lib/supabase-server'; // ⬅️ default import
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
 
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? '/';
   if (!code) {
-    return NextResponse.redirect(new URL('/login?error=missing_code', req.url));
+    return NextResponse.redirect(`${base}/login?error=missing_code`);
   }
 
-const supabase = await supabaseServer();
-const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const supabase = supabaseServer(); // ⬅️ SIN await
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(error.message)}`, req.url)
-    );
+    return NextResponse.redirect(`${base}/login?error=auth`);
   }
 
-  // crea/actualiza perfil después de iniciar sesión
-  await upsertProfile();
-
-  // a dónde quieres mandar al usuario después de loguear:
-  return NextResponse.redirect(new URL('/', req.url));
+  // Opcional: crear/actualizar perfil aquí, o confías en tu acción upsertProfile()
+  return NextResponse.redirect(`${base}/login?ok=1`);
 }
