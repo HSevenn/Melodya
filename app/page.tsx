@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase-server';
 
 async function fetchFeed() {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data } = await supabase
     .from('posts')
     .select(`
