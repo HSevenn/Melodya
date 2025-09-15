@@ -1,64 +1,85 @@
 'use client';
 
-import { useState } from 'react';
-import { upsertProfile } from '@/app/actions';
-import { createBrowserClient } from '@supabase/ssr';
+import { useState, useTransition } from 'react';
+import { sendMagicLink, upsertProfile } from '@/app/actions';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [sending, setSending] = useState(false);
-
-  // Cliente de Supabase para el navegador (no usa tu helper de server)
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  async function sendMagicLink(e: React.FormEvent) {
-    e.preventDefault();
-    setSending(true);
-    try {
-      const site = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          // 👇 muy importante: que apunte al callback
-          emailRedirectTo: `${site}/auth/callback?next=/`,
-        },
-      });
-      if (error) throw error;
-      alert('Te enviamos un enlace a tu correo. Revisa tu inbox.');
-    } catch (err: any) {
-      alert(err?.message || 'Error enviando el enlace');
-    } finally {
-      setSending(false);
-    }
-  }
+  const [pendingSend, startSend] = useTransition();
+  const [pendingUpsert, startUpsert] = useTransition();
 
   return (
-    <div className="max-w-sm mx-auto space-y-4">
+    <div className="space-y-8 max-w-md mx-auto">
       <h1 className="text-xl font-semibold">Entrar</h1>
 
-      <form onSubmit={sendMagicLink} className="space-y-3">
-        <div>
-          <label className="block text-sm mb-1">Email</label>
-          <input
-            type="email"
-            required
-            className="w-full border rounded px-3 py-2"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="tu@correo.com"
-          />
-        </div>
-        <button disabled={sending} className="px-4 py-2 rounded bg-black text-white">
-          {sending ? 'Enviando…' : 'Recibir enlace mágico'}
+      {/* 1) Pedir Magic Link por email */}
+      <form
+        action={(formData) => {
+          // Esta es una Server Action referenciada (sendMagicLink)
+          // Vuelve void/Promise<void> en el servidor
+          startSend(async () => {
+            await sendMagicLink(formData);
+          });
+        }}
+        className="space-y-3 border rounded-lg p-4"
+      >
+        <label className="block text-sm font-medium">Correo</label>
+        <input
+          type="email"
+          name="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="tu@correo.com"
+          className="w-full border rounded px-3 py-2"
+        />
+
+        {/* URL de redirección opcional (si tu action la usa) */}
+        <input type="hidden" name="redirectTo" value="/auth/callback" />
+
+        <button
+          type="submit"
+          disabled={pendingSend}
+          className="px-4 py-2 rounded bg-black text-white"
+        >
+          {pendingSend ? 'Enviando enlace…' : 'Enviar Magic Link'}
         </button>
+
+        <p className="text-xs text-neutral-500">
+          Revisa tu correo y abre el enlace para iniciar sesión.
+        </p>
       </form>
 
-      <form action={upsertProfile}>
-        <button className="mt-6 text-sm underline" type="submit">
-          Ya entré con el enlace → Crear/actualizar mi perfil
+      {/* 2) Crear/actualizar perfil tras abrir el Magic Link */}
+      <form
+        action={(formData) => {
+          // upsertProfile DEBE devolver void/Promise<void>
+          startUpsert(async () => {
+            await upsertProfile(formData);
+          });
+        }}
+        className="space-y-3 border rounded-lg p-4"
+      >
+        <label className="block text-sm font-medium">Usuario</label>
+        <input
+          name="username"
+          placeholder="tu_usuario"
+          className="w-full border rounded px-3 py-2"
+        />
+
+        <label className="block text-sm font-medium">Nombre para mostrar</label>
+        <input
+          name="display_name"
+          placeholder="Tu nombre"
+          className="w-full border rounded px-3 py-2"
+        />
+
+        <button
+          type="submit"
+          disabled={pendingUpsert}
+          className="px-4 py-2 rounded border"
+        >
+          {pendingUpsert ? 'Guardando…' : 'Ya entré con el enlace — Crear/actualizar mi perfil'}
         </button>
       </form>
     </div>
