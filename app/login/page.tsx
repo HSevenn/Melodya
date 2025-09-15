@@ -1,44 +1,69 @@
 'use client';
-import { useState } from 'react';
-import { supabase } from '@/lib/supabase-client';
-import { upsertProfile } from '@/app/actions';
+
+import { FormEvent, useState } from 'react';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [state, setState] = useState<'idle'|'sent'|'error'>('idle');
+  const supabase = supabaseBrowser();
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setState('idle');
+
+    const redirectTo =
+      process.env.NEXT_PUBLIC_SITE_URL
+        ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        : `${window.location.origin}/auth/callback`;
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: redirectTo },
+    });
+
+    if (error) {
+      console.error(error);
+      setState('error');
+      return;
+    }
+    setState('sent');
+  }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Entrar</h1>
-      <p className="text-sm text-neutral-600">Te enviamos un enlace mágico a tu correo.</p>
+    <div className="max-w-md mx-auto p-6">
+      <h1 className="text-xl font-semibold mb-4">Entrar</h1>
 
-      {!sent ? (
-        <form onSubmit={async (e) => {
-          e.preventDefault();
-          const { error } = await supabase.auth.signInWithOtp({ email });
-          if (error) { alert(error.message); return; }
-          setSent(true);
-        }} className="space-y-3">
-          <input
-            type="email"
-            required
-            placeholder="tu@correo.com"
-            className="w-full border rounded px-3 py-2"
-            value={email}
-            onChange={(e)=>setEmail(e.target.value)}
-          />
-          <button className="px-4 py-2 bg-black text-white rounded">Enviar enlace</button>
-        </form>
-      ) : (
-        <div className="text-sm">Revisa tu correo. Cuando entres, creamos tu perfil…</div>
+      <form onSubmit={onSubmit} className="space-y-3">
+        <input
+          type="email"
+          required
+          placeholder="tu@correo.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full border p-2 rounded"
+        />
+        <button
+          type="submit"
+          className="px-4 py-2 rounded bg-black text-white"
+        >
+          Enviarme enlace mágico
+        </button>
+      </form>
+
+      {state === 'sent' && (
+        <p className="mt-4 text-sm text-green-700">
+          Revisa tu correo y abre el enlace. Te redirigirá a <code>/auth/callback</code>.
+        </p>
       )}
-      <button
-        className="text-sm underline"
-        onClick={async ()=>{
-          // si ya tienes sesión (después del enlace) completa el perfil:
-          await upsertProfile();
-          window.location.href = '/';
-        }}
+      {state === 'error' && (
+        <p className="mt-4 text-sm text-red-700">
+          No se pudo enviar el enlace. Intenta de nuevo.
+        </p>
+      )}
+    </div>
+  );
+}
       >
         Ya entré con el enlace → Crear/actualizar mi perfil
       </button>
