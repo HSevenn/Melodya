@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import AuthHashForwarder from './_components/AuthHashForwarder';
 import { supabaseServer } from '@/lib/supabase-server';
 import AuthCodeRedirectClient from './AuthCodeRedirectClient';
 
@@ -26,6 +27,7 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-6">
+     <AuthHashForwarder />
       {/* NUEVO: detecta code/hash y redirige al callback */}
       <AuthCodeRedirectClient />
 
