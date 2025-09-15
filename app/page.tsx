@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase-server';
 
 async function fetchFeed() {
-  const supabase = supabaseServer(); // ✅ sin await
+  const supabase = await supabaseServer();
   const { data } = await supabase
     .from('posts')
     .select(`
@@ -26,17 +26,13 @@ export default async function HomePage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Feed</h1>
-        <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">
-          Compartir
-        </Link>
+        <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">Compartir</Link>
       </div>
 
       {feed.map((p: any) => (
         <article key={p.id} className="border rounded-xl p-4 flex gap-3">
           <div className="w-16 h-16 rounded overflow-hidden bg-neutral-100 shrink-0">
-            {p.cover_url ? (
-              <img src={p.cover_url} alt="" className="w-full h-full object-cover" />
-            ) : null}
+            {p.cover_url ? <img src={p.cover_url} alt="" className="w-full h-full object-cover" /> : null}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm text-neutral-500">
@@ -49,9 +45,7 @@ export default async function HomePage() {
               <span>❤️ {countReactions(p.reactions, 'heart')}</span>
               <span>🔥 {countReactions(p.reactions, 'fire')}</span>
               {p.external_url ? (
-                <a href={p.external_url} target="_blank" className="underline">
-                  Abrir
-                </a>
+                <a href={p.external_url} target="_blank" className="underline">Abrir</a>
               ) : null}
             </div>
           </div>
