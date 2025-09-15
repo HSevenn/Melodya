@@ -1,6 +1,8 @@
 // /app/page.tsx
 import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase-server';
+'@/app/_components/AuthCodeRedirectClient'; // ← NUEVO
+
 
 /** Lee el feed más reciente desde Supabase (Server Component) */
 async function fetchFeed() {
@@ -31,6 +33,7 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-6">
+     <AuthCodeRedirectClient /> {/* ← NUEVO: detecta code/hash y redirige */}
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Feed</h1>
         <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">
