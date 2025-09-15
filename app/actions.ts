@@ -1,48 +1,79 @@
-// /app/actions.ts
 'use server';
 
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { supabaseServer } from '@/lib/supabase-server';
 
-function sanitize(s: unknown) {
-  return String(s ?? '').trim();
-}
+/** Tipos de reacciones permitidas */
+type ReactionKind = 'heart' | 'fire';
 
-export async function createPost(fd: FormData) {
-  const supabase = supabaseServer(); // ✅ sin await
+/** Crea/actualiza el perfil del usuario autenticado */
+export async function upsertProfile() {
+  'use server';
 
-  // Autenticación (RLS requiere un usuario válido)
-  const { data: auth, error: authError } = await supabase.auth.getUser();
-  if (authError) throw new Error('Error de sesión. Intenta de nuevo.');
-  if (!auth?.user) throw new Error('Debes iniciar sesión para publicar.');
+  const supabase = await supabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No autenticado');
 
-  // Datos
-  const title = sanitize(fd.get('title'));
-  const artist = sanitize(fd.get('artist'));
-  const cover_url = sanitize(fd.get('cover_url'));
-  const external_url = sanitize(fd.get('external_url'));
-  const note = sanitize(fd.get('note'));
+  const email = user.email ?? '';
+  const username = email.split('@')[0] || `user_${user.id.slice(0, 6)}`;
 
-  // Validación mínima
-  if (!title || !artist) {
-    throw new Error('Canción y Artista son obligatorios.');
-  }
-
-  // (Opcional) límites de longitud para evitar basura excesiva
-  if (title.length > 140) throw new Error('El título es muy largo (máx. 140).');
-  if (artist.length > 140) throw new Error('El artista es muy largo (máx. 140).');
-  if (note.length > 500) throw new Error('La nota es muy larga (máx. 500).');
-
-  // Insert
-  const { error } = await supabase.from('posts').insert({
-    user_id: auth.user.id,
-    title,
-    artist,
-    cover_url: cover_url || null,
-    external_url: external_url || null,
-    note: note || null,
+  await supabase.from('profiles').upsert({
+    id: user.id,
+    username,
+    display_name: username,
+    avatar_url: null,
   });
 
-  if (error) {
-    throw new Error(error.message || 'No se pudo crear la publicación.');
+  revalidatePath('/');
+  return { ok: true };
+}
+
+/** Crea un post nuevo desde un <form action={createPost}> */
+export async function createPost(formData: FormData) {
+  'use server';
+
+  const supabase = await supabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No autenticado');
+
+  const title = String(formData.get('title') ?? '').trim();
+  const artist = String(formData.get('artist') ?? '').trim();
+  const cover_url = (String(formData.get('cover_url') ?? '').trim() || null) as string | null;
+  const external_url = (String(formData.get('external_url') ?? '').trim() || null) as string | null;
+  const note = (String(formData.get('note') ?? '').trim() || null) as string | null;
+
+  if (!title || !artist) {
+    throw new Error('Canción y artista son obligatorios');
   }
+
+  await supabase.from('posts').insert({
+    user_id: user.id,
+    title,
+    artist,
+    cover_url,
+    external_url,
+    note,
+  });
+
+  revalidatePath('/');
+  // Si prefieres volver al home desde el server:
+  // redirect('/');
+}
+
+/** Crea/actualiza la reacción del usuario a un post */
+export async function react(postId: string, kind: ReactionKind) {
+  'use server';
+
+  const supabase = await supabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('No autenticado');
+
+  await supabase.from('reactions').upsert({
+    post_id: postId,
+    user_id: user.id,
+    kind,
+  });
+
+  revalidatePath('/');
 }
