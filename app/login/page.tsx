@@ -1,86 +1,69 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { sendMagicLink, upsertProfile } from '@/app/actions';
+import { useEffect, useState, useTransition } from 'react';
+import { upsertProfile } from '@/app/actions';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
-  const [pendingSend, startSend] = useTransition();
-  const [pendingUpsert, startUpsert] = useTransition();
+  const [sent, setSent] = useState(false);
+  const [isPending, startUpsert] = useTransition();
+
+  // Si llega ?error=1 avisamos
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('error')) alert('El enlace es inválido o expiró. Pide uno nuevo.');
+  }, []);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const supabase = supabaseBrowser();
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      },
+    });
+    if (error) return alert(error.message);
+    setSent(true);
+  }
 
   return (
-    <div className="space-y-8 max-w-md mx-auto">
+    <div className="max-w-md mx-auto space-y-6">
       <h1 className="text-xl font-semibold">Entrar</h1>
 
-      {/* 1) Pedir Magic Link por email */}
-      <form
-        action={(formData) => {
-          // Esta es una Server Action referenciada (sendMagicLink)
-          // Vuelve void/Promise<void> en el servidor
-          startSend(async () => {
-            await sendMagicLink(formData);
-          });
-        }}
-        className="space-y-3 border rounded-lg p-4"
-      >
-        <label className="block text-sm font-medium">Correo</label>
+      <form onSubmit={handleSend} className="space-y-3">
+        <label className="block text-sm">Correo</label>
         <input
           type="email"
-          name="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="tu@correo.com"
           className="w-full border rounded px-3 py-2"
         />
-
-        {/* URL de redirección opcional (si tu action la usa) */}
-        <input type="hidden" name="redirectTo" value="/auth/callback" />
-
-        <button
-          type="submit"
-          disabled={pendingSend}
-          className="px-4 py-2 rounded bg-black text-white"
-        >
-          {pendingSend ? 'Enviando enlace…' : 'Enviar Magic Link'}
+        <button className="px-4 py-2 bg-black text-white rounded">
+          Enviar Magic Link
         </button>
-
-        <p className="text-xs text-neutral-500">
-          Revisa tu correo y abre el enlace para iniciar sesión.
-        </p>
+        {sent && (
+          <p className="text-sm text-neutral-600">
+            Revisa tu correo y abre el enlace para iniciar sesión.
+          </p>
+        )}
       </form>
 
-      {/* 2) Crear/actualizar perfil tras abrir el Magic Link */}
       <form
-        action={(formData) => {
-          // upsertProfile DEBE devolver void/Promise<void>
+        action={() =>
           startUpsert(async () => {
             await upsertProfile();
-          });
-        }}
-        className="space-y-3 border rounded-lg p-4"
+          })
+        }
       >
-        <label className="block text-sm font-medium">Usuario</label>
-        <input
-          name="username"
-          placeholder="tu_usuario"
-          className="w-full border rounded px-3 py-2"
-        />
-
-        <label className="block text-sm font-medium">Nombre para mostrar</label>
-        <input
-          name="display_name"
-          placeholder="Tu nombre"
-          className="w-full border rounded px-3 py-2"
-        />
-
-        <button
-          type="submit"
-          disabled={pendingUpsert}
-          className="px-4 py-2 rounded border"
-        >
-          {pendingUpsert ? 'Guardando…' : 'Ya entré con el enlace — Crear/actualizar mi perfil'}
-        </button>
+        <div className="space-y-3 border rounded-lg p-4">
+          <button className="mt-6 text-sm underline" type="submit" disabled={isPending}>
+            Ya entré con el enlace — Crear/actualizar mi perfil
+          </button>
+        </div>
       </form>
     </div>
   );
