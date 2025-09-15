@@ -1,8 +1,7 @@
-// /app/u/[username]/page.tsx
-import supabaseServer from '@/lib/supabase-server';
+import { supabaseServer } from '@/lib/supabase-server';
 
 async function loadUser(username: string) {
-  const supabase = supabaseServer(); // ← sin await
+  const supabase = supabaseServer(); // ✅ sin await
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -22,11 +21,7 @@ async function loadUser(username: string) {
   return { profile, posts: posts ?? [] };
 }
 
-export default async function UserPage({
-  params,
-}: {
-  params: { username: string };
-}) {
+export default async function UserPage({ params }: { params: { username: string } }) {
   const data = await loadUser(params.username);
   if (!data) return <div>Usuario no encontrado</div>;
 
@@ -37,11 +32,7 @@ export default async function UserPage({
       <div className="flex items-center gap-3">
         <div className="w-16 h-16 rounded-full overflow-hidden bg-neutral-200">
           {profile.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt=""
-              className="w-full h-full object-cover"
-            />
+            <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
           ) : null}
         </div>
         <div>
@@ -61,14 +52,11 @@ export default async function UserPage({
             className="block aspect-square rounded overflow-hidden bg-neutral-100"
           >
             {p.cover_url ? (
-              <img
-                src={p.cover_url}
-                alt=""
-                className="w-full h-full object-cover"
-              />
+              <img src={p.cover_url} alt="" className="w-full h-full object-cover" />
             ) : null}
           </a>
         ))}
+
         {posts.length === 0 && (
           <div className="col-span-3 text-sm text-neutral-500">
             Sin publicaciones aún.
