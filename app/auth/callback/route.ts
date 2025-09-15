@@ -4,13 +4,11 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const code = url.searchParams.get('code');
 
-  // Preparamos la respuesta a la que vamos a redirigir
-  const redirectTo = new URL('/', url.origin);
-  const res = NextResponse.redirect(redirectTo);
+  // vamos a construir desde ya la respuesta a la que pegaremos las cookies
+  const res = NextResponse.redirect(new URL('/', url.origin));
 
-  // Cliente de Supabase que LEE de req.cookies y ESCRIBE en res.cookies
+  // Cliente de Supabase para Route Handler, escribiendo cookies en `res`
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -20,25 +18,27 @@ export async function GET(req: NextRequest) {
           return req.cookies.get(name)?.value;
         },
         set(name: string, value: string, options?: CookieOptions) {
-          res.cookies.set(name, value, options as any);
+          res.cookies.set({ name, value, ...options });
         },
         remove(name: string, options?: CookieOptions) {
-          res.cookies.set(name, '', { ...options, expires: new Date(0) } as any);
+          res.cookies.set({ name, value: '', ...options, expires: new Date(0) });
         },
       },
     }
   );
 
   try {
+    const code = url.searchParams.get('code');
+
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) throw error;
     } else {
-      // Soporte para enlaces viejos con tokens en query (poco común en 2024+)
+      // soporte para el formato hash (#access_token=...) que tuviste antes
       const access_token = url.searchParams.get('access_token');
       const refresh_token = url.searchParams.get('refresh_token');
       if (access_token && refresh_token) {
-        const { error } = await supabase.auth.setSession({ access_token, refresh_token } as any);
+        const { error } = await supabase.auth.setSession({ access_token, refresh_token });
         if (error) throw error;
       }
     }
@@ -46,6 +46,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/login?error=1', url.origin));
   }
 
-  // MUY IMPORTANTE: devolver la misma `res` donde escribimos las cookies
+  // MUY IMPORTANTE: devolver `res` (que ya lleva las cookies pegadas)
   return res;
 }
