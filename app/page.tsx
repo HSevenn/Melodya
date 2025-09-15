@@ -1,9 +1,22 @@
-// /app/page.tsx  (REEMPLAZA TODO EL ARCHIVO)
 import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase-server';
 
-function countReactions(reactions: { kind: string }[] = [], kind: 'heart' | 'fire') {
-  return reactions.filter(r => r.kind === kind).length;
+/** ── CLIENT: si el mail abre con #access_token, reenvía a /auth/callback */
+function AuthCodeRedirectClient() {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token=')) {
+    const p = new URLSearchParams(hash.slice(1));
+    const access_token = p.get('access_token');
+    const refresh_token = p.get('refresh_token');
+    if (access_token && refresh_token) {
+      const origin = window.location.origin;
+      window.location.replace(
+        `${origin}/auth/callback?access_token=${encodeURIComponent(access_token)}&refresh_token=${encodeURIComponent(refresh_token)}`
+      );
+    }
+  }
+  return null;
 }
 
 async function fetchFeed() {
@@ -20,40 +33,39 @@ async function fetchFeed() {
   return data ?? [];
 }
 
+function countReactions(reactions: {kind: string}[] = [], kind: 'heart'|'fire') {
+  return reactions.filter(r => r.kind === kind).length;
+}
+
 export default async function HomePage() {
+  // 🔎 NUEVO: leemos la sesión o el user para confirmar auth
+  const supabase = await supabaseServer();
+  const { data: { user } } = await supabase.auth.getUser();
+
   const feed = await fetchFeed();
 
   return (
     <div className="space-y-6">
-      {/* ⬇️ Captura #access_token/#refresh_token y los manda a /auth/callback */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            (function () {
-              var h = location.hash;
-              if (h && (h.includes('access_token=') || h.includes('refresh_token='))) {
-                var qs = new URLSearchParams(h.slice(1)).toString();
-                // Usa replace para no dejar el hash en el historial
-                location.replace('/auth/callback?' + qs);
-              }
-            })();
-          `,
-        }}
-      />
+      {/* Debug visual de sesión */}
+      <div className="text-sm text-neutral-600">
+        {user ? (
+          <span>Sesión iniciada como <b>{user.email}</b></span>
+        ) : (
+          <span>No has iniciado sesión</span>
+        )}
+      </div>
+
+      <AuthCodeRedirectClient />
 
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Feed</h1>
-        <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">
-          Compartir
-        </Link>
+        <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">Compartir</Link>
       </div>
 
       {feed.map((p: any) => (
         <article key={p.id} className="border rounded-xl p-4 flex gap-3">
           <div className="w-16 h-16 rounded overflow-hidden bg-neutral-100 shrink-0">
-            {p.cover_url ? (
-              <img src={p.cover_url} alt="" className="w-full h-full object-cover" />
-            ) : null}
+            {p.cover_url ? <img src={p.cover_url} alt="" className="w-full h-full object-cover"/> : null}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm text-neutral-500">
@@ -66,9 +78,7 @@ export default async function HomePage() {
               <span>❤️ {countReactions(p.reactions, 'heart')}</span>
               <span>🔥 {countReactions(p.reactions, 'fire')}</span>
               {p.external_url ? (
-                <a href={p.external_url} target="_blank" className="underline">
-                  Abrir
-                </a>
+                <a href={p.external_url} target="_blank" className="underline">Abrir</a>
               ) : null}
             </div>
           </div>
