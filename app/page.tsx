@@ -1,13 +1,13 @@
-// /app/page.tsx
 import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase-server';
-'@/app/_components/AuthCodeRedirectClient'; // ← NUEVO
+import AuthCodeRedirectClient from './AuthCodeRedirectClient';
 
+function countReactions(reactions: { kind: 'heart' | 'fire' }[] = [], kind: 'heart' | 'fire') {
+  return reactions.filter((r) => r.kind === kind).length;
+}
 
-/** Lee el feed más reciente desde Supabase (Server Component) */
 async function fetchFeed() {
-  // OJO: no va await aquí
-  const supabase = supabaseServer();
+  const supabase = supabaseServer(); // ← sin await
   const { data } = await supabase
     .from('posts')
     .select(`
@@ -21,19 +21,14 @@ async function fetchFeed() {
   return data ?? [];
 }
 
-function countReactions(
-  reactions: { kind: 'heart' | 'fire' | string }[] = [],
-  kind: 'heart' | 'fire'
-) {
-  return reactions.filter((r) => r.kind === kind).length;
-}
-
 export default async function HomePage() {
   const feed = await fetchFeed();
 
   return (
     <div className="space-y-6">
-     <AuthCodeRedirectClient /> {/* ← NUEVO: detecta code/hash y redirige */}
+      {/* NUEVO: detecta code/hash y redirige al callback */}
+      <AuthCodeRedirectClient />
+
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Feed</h1>
         <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">
@@ -44,9 +39,7 @@ export default async function HomePage() {
       {feed.map((p: any) => (
         <article key={p.id} className="border rounded-xl p-4 flex gap-3">
           <div className="w-16 h-16 rounded overflow-hidden bg-neutral-100 shrink-0">
-            {p.cover_url ? (
-              <img src={p.cover_url} alt="" className="w-full h-full object-cover" />
-            ) : null}
+            {p.cover_url ? <img src={p.cover_url} alt="" className="w-full h-full object-cover" /> : null}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm text-neutral-500">
