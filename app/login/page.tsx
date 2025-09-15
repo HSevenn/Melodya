@@ -55,7 +55,7 @@ export default function LoginPage() {
         action={(formData) => {
           // upsertProfile DEBE devolver void/Promise<void>
           startUpsert(async () => {
-            await upsertProfile(formData);
+            await upsertProfile();
           });
         }}
         className="space-y-3 border rounded-lg p-4"
