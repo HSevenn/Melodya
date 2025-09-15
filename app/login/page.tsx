@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState } from 'react';
 import { upsertProfile } from '@/app/actions';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
-  const [isPending, startUpsert] = useTransition();
 
   // Si llega ?error=1 avisamos
   useEffect(() => {
@@ -32,6 +31,7 @@ export default function LoginPage() {
     <div className="max-w-md mx-auto space-y-6">
       <h1 className="text-xl font-semibold">Entrar</h1>
 
+      {/* --- Formulario para pedir el Magic Link --- */}
       <form onSubmit={handleSend} className="space-y-3">
         <label className="block text-sm">Correo</label>
         <input
@@ -52,18 +52,15 @@ export default function LoginPage() {
         )}
       </form>
 
-      <form
-        action={() =>
-          startUpsert(async () => {
-            await upsertProfile();
-          })
-        }
-      >
-        <div className="space-y-3 border rounded-lg p-4">
-          <button className="mt-6 text-sm underline" type="submit" disabled={isPending}>
-            Ya entré con el enlace — Crear/actualizar mi perfil
-          </button>
-        </div>
+      {/* --- Crear/actualizar perfil --- */}
+      <form>
+        <button
+          className="mt-6 text-sm underline"
+          type="submit"
+          formAction={upsertProfile}
+        >
+          Ya entré con el enlace — Crear/actualizar mi perfil
+        </button>
       </form>
     </div>
   );
