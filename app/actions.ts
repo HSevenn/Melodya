@@ -5,7 +5,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 /** Crea/actualiza perfil al loguear con magic link */
 export async function upsertProfile() {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
@@ -22,7 +22,7 @@ export async function upsertProfile() {
 
 /** Crear post (manual) */
 export async function createPost(formData: FormData) {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
