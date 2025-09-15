@@ -1,18 +1,38 @@
+// /app/actions.ts
 'use server';
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { supabaseServer } from '@/lib/supabase-server';
 
-/** Tipos de reacciones permitidas */
-type ReactionKind = 'heart' | 'fire';
+/* ------------------------- 1) MAGIC LINK ------------------------- */
+export async function sendMagicLink(formData: FormData) {
+  const email = (formData.get('email') ?? '') as string;
+  const redirectTo =
+    (formData.get('redirectTo') as string | null) ||
+    `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`;
 
-/** Crea/actualiza el perfil del usuario autenticado */
+  if (!email) throw new Error('Escribe tu correo');
+
+  const supabase = supabaseServer();
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: redirectTo },
+  });
+
+  if (error) {
+    console.error('Error enviando Magic Link:', error.message);
+    throw new Error('No se pudo enviar el Magic Link');
+  }
+}
+
+/* --------------------- 2) PERFIL (UPSERT) ------------------------ */
 export async function upsertProfile() {
-  'use server';
+  const supabase = supabaseServer();
 
-  const supabase = await supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
   const email = user.email ?? '';
@@ -26,15 +46,16 @@ export async function upsertProfile() {
   });
 
   revalidatePath('/');
-  return { ok: true };
+  // No devolvemos nada → Promise<void> (requerido por <form action>)
 }
 
-/** Crea un post nuevo desde un <form action={createPost}> */
+/* ----------------------- 3) NUEVO POST --------------------------- */
 export async function createPost(formData: FormData) {
-  'use server';
+  const supabase = supabaseServer();
 
-  const supabase = await supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
   const title = String(formData.get('title') ?? '').trim();
@@ -43,9 +64,7 @@ export async function createPost(formData: FormData) {
   const external_url = (String(formData.get('external_url') ?? '').trim() || null) as string | null;
   const note = (String(formData.get('note') ?? '').trim() || null) as string | null;
 
-  if (!title || !artist) {
-    throw new Error('Canción y artista son obligatorios');
-  }
+  if (!title || !artist) throw new Error('Canción y artista son obligatorios');
 
   await supabase.from('posts').insert({
     user_id: user.id,
@@ -57,16 +76,19 @@ export async function createPost(formData: FormData) {
   });
 
   revalidatePath('/');
-  // Si prefieres volver al home desde el server:
+  // Si prefieres redirigir desde el server:
   // redirect('/');
 }
 
-/** Crea/actualiza la reacción del usuario a un post */
-export async function react(postId: string, kind: ReactionKind) {
-  'use server';
+/* ------------------------ 4) REACCIONES -------------------------- */
+type ReactionKind = 'heart' | 'fire';
 
-  const supabase = await supabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
+export async function react(postId: string, kind: ReactionKind) {
+  const supabase = supabaseServer();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error('No autenticado');
 
   await supabase.from('reactions').upsert({
