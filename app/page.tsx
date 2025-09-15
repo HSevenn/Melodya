@@ -1,5 +1,20 @@
 import Link from 'next/link';
 import { supabaseServer } from '@/lib/supabase-server';
+import { useEffect } from 'react';
+
+/** Detecta ?code=... en el home (por si el magic link aterriza aquí) y reenvía al callback */
+function AuthCodeRedirectClient() {
+  'use client';
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('code');
+    if (code) {
+      const next = url.searchParams.get('next') || '/';
+      window.location.replace(`/auth/callback?code=${encodeURIComponent(code)}&next=${encodeURIComponent(next)}`);
+    }
+  }, []);
+  return null;
+}
 
 async function fetchFeed() {
   const supabase = await supabaseServer();
@@ -16,7 +31,7 @@ async function fetchFeed() {
 }
 
 function countReactions(reactions: { kind: string }[] = [], kind: 'heart' | 'fire') {
-  return reactions.filter(r => r.kind === kind).length;
+  return reactions.filter((r) => r.kind === kind).length;
 }
 
 export default async function HomePage() {
@@ -24,9 +39,13 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-6">
+      <AuthCodeRedirectClient />
+
       <div className="flex justify-between items-center">
         <h1 className="text-xl font-semibold">Feed</h1>
-        <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">Compartir</Link>
+        <Link href="/new" className="px-3 py-1.5 rounded bg-black text-white text-sm">
+          Compartir
+        </Link>
       </div>
 
       {feed.map((p: any) => (
@@ -45,7 +64,9 @@ export default async function HomePage() {
               <span>❤️ {countReactions(p.reactions, 'heart')}</span>
               <span>🔥 {countReactions(p.reactions, 'fire')}</span>
               {p.external_url ? (
-                <a href={p.external_url} target="_blank" className="underline">Abrir</a>
+                <a href={p.external_url} target="_blank" className="underline">
+                  Abrir
+                </a>
               ) : null}
             </div>
           </div>
@@ -53,9 +74,7 @@ export default async function HomePage() {
       ))}
 
       {feed.length === 0 && (
-        <div className="text-center text-sm text-neutral-500">
-          Aún no hay publicaciones. ¡Sé el primero!
-        </div>
+        <div className="text-center text-sm text-neutral-500">Aún no hay publicaciones. ¡Sé el primero!</div>
       )}
     </div>
   );
