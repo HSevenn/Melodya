@@ -11,6 +11,7 @@
     "next": "14.2.5",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "@supabase/ssr": "^0.4.0", 
     "@supabase/supabase-js": "^2.43.4"
   },
   "devDependencies": {
@@ -25,3 +26,4 @@
     "eslint-config-next": "14.2.5"
   }
 }
+
