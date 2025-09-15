@@ -1,17 +1,28 @@
 // app/auth/callback/route.ts
 import { NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
+import { upsertProfile } from '@/app/actions';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const code = url.searchParams.get('code');
 
-  if (code) {
-    const supabase = await supabaseServer();
-    // Intercambia el "code" por la sesión y setea cookies
-    await supabase.auth.exchangeCodeForSession(code);
+  if (!code) {
+    return NextResponse.redirect(new URL('/login?error=missing_code', req.url));
   }
 
-  // Vuelve al home (o a donde prefieras)
-  return NextResponse.redirect(new URL('/', request.url));
+  const supabase = supabaseServer();
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(error.message)}`, req.url)
+    );
+  }
+
+  // crea/actualiza perfil después de iniciar sesión
+  await upsertProfile();
+
+  // a dónde quieres mandar al usuario después de loguear:
+  return NextResponse.redirect(new URL('/', req.url));
 }
