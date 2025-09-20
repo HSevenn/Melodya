@@ -29,12 +29,11 @@ export default function LoginPage() {
     if (!email) return setErr('Escribe tu correo.');
 
     setLoading(true);
-    // 👉 OTP por correo (sin link)
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: true, // crea usuario si no existe
-        // importante: no ponemos emailRedirectTo para que NO sea magic link
+        // no usamos emailRedirectTo para evitar magic link
       },
     });
     setLoading(false);
@@ -54,20 +53,20 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    // 👉 verificar OTP de 6 dígitos
     const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: code.trim(),
-      type: 'email', // ¡clave! para código por correo
+      type: 'email',
     });
     setLoading(false);
 
-    if (error) return setErr(error.message);
-    if (!data.session) return setErr('No se creó la sesión.');
+    console.log('verifyOtp →', { data, error }); // 👈 log para ver qué devuelve
 
-    // listo: refrescamos y vamos al home
-    router.replace('/');
-    router.refresh();
+    if (error) return setErr(error.message || 'No se pudo verificar el código.');
+    if (!data?.session) return setErr('No se creó la sesión. Reenvía el código.');
+
+    // Forzamos recarga con la sesión activa
+    window.location.href = '/';
   }
 
   function resetToEmail() {
