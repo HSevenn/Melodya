@@ -39,7 +39,7 @@ export default function AuthCallbackPage() {
 
         // Intercambia el código por una sesión. Supabase usa internamente el
         // code_verifier guardado en el mismo navegador donde se solicitó el link.
-        const { error: exErr } = await supabase.auth.exchangeCodeForSession({ code });
+        const { error: exErr } = await supabase.auth.exchangeCodeForSession (code) ;
 
         if (exErr) {
           // Caso típico: “both auth code and code verifier should be non-empty”
