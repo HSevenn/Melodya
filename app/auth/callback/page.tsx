@@ -1,98 +1,76 @@
-// app/auth/callback/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
-// evita cualquier intento de prerender/caché en esta ruta
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-export default function AuthCallbackPage() {
+function AuthCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
-
-  const [status, setStatus] = useState<'checking' | 'ok' | 'error'>('checking');
-  const [message, setMessage] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const run = async () => {
-      const code = params.get('code');               // PKCE auth code
-      const error = params.get('error_description') || params.get('error');
+    (async () => {
+      const supabase = supabaseBrowser();
 
-      // Si Supabase nos devolvió un error directo en la URL
-      if (error) {
-        setStatus('error');
-        setMessage(error);
-        return;
-      }
-
-      if (!code) {
-        setStatus('error');
-        setMessage('No llegó ningún código de verificación en la URL.');
-        return;
-      }
+      // soporte de ?code=... y de hash tipo #access_token=... (algunos clientes)
+      const code = params.get('code');
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const accessToken = hashParams.get('access_token');
 
       try {
-        const supabase = supabaseBrowser();
-
-        // Intercambia el código por una sesión. Supabase usa internamente el
-        // code_verifier guardado en el mismo navegador donde se solicitó el link.
-        const { error: exErr } = await supabase.auth.exchangeCodeForSession (code) ;
-
-        if (exErr) {
-          // Caso típico: “both auth code and code verifier should be non-empty”
-          setStatus('error');
-          setMessage(
-            'No se pudo completar con el código. Puedes reenviar un enlace seguro desde la pantalla de inicio de sesión.'
-          );
+        if (code) {
+          // ✅ IMPORTANTE: pasar el string, no { code }
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exErr) throw exErr;
+          router.replace('/');
           return;
         }
 
-        // Sesión OK → redirigimos al home (o a donde prefieras)
-        setStatus('ok');
-        router.replace('/');
-      } catch (e: any) {
-        setStatus('error');
-        setMessage(e?.message ?? 'Error desconocido al validar el enlace.');
-      }
-    };
+        if (accessToken) {
+          // fallback raro: setSession con access_token (por si el cliente de correo lo pone en el hash)
+          const refreshToken = hashParams.get('refresh_token') ?? undefined;
+          const { error: setErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken!,
+          } as any);
+          if (setErr) throw setErr;
+          router.replace('/');
+          return;
+        }
 
-    run();
+        setError('No se encontró código de autenticación.');
+      } catch (e: any) {
+        setError(e?.message ?? 'No se pudo completar el login.');
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (status === 'checking') {
-    return (
-      <main className="container mx-auto px-4 py-10">
-        <h1 className="text-2xl font-bold mb-2">Conectando…</h1>
-        <p className="text-sm opacity-80">Un momento por favor.</p>
-      </main>
-    );
-  }
+  return (
+    <main className="container mx-auto max-w-md p-6">
+      <h1 className="text-xl font-semibold mb-2">Conectando…</h1>
+      {error ? (
+        <>
+          <p className="text-red-500 mb-3">{error}</p>
+          <p className="text-sm">
+            Consejo: abre el enlace del correo con un clic normal (no copiar/pegar) y en este mismo
+            navegador. Si falla, vuelve a solicitarlo desde “Entrar”.
+          </p>
+        </>
+      ) : (
+        <p>Un momento por favor…</p>
+      )}
+    </main>
+  );
+}
 
-  if (status === 'error') {
-    return (
-      <main className="container mx-auto px-4 py-10">
-        <h1 className="text-2xl font-bold mb-3">Conectando…</h1>
-        <p className="text-sm text-red-500 mb-4">{message}</p>
-
-        <a
-          href="/login"
-          className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-100"
-        >
-          Reenviar enlace mágico (seguro)
-        </a>
-
-        <p className="mt-3 text-xs opacity-70">
-          Consejo: abre el nuevo enlace con un clic normal (sin copiar/pegar) y en el mismo
-          navegador donde solicitaste el correo.
-        </p>
-      </main>
-    );
-  }
-
-  // status === 'ok' → se redirige; dejamos un fallback por si tarda un frame.
-  return null;
+export default function Page() {
+  return (
+    <Suspense fallback={<main className="container mx-auto max-w-md p-6">Cargando…</main>}>
+      <AuthCallbackInner />
+    </Suspense>
+  );
 }
