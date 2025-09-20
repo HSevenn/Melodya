@@ -1,67 +1,66 @@
+// app/login/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { upsertProfile } from '@/app/actions';
-import { supabaseBrowser } from '@/lib/supabase-browser';
+import { useState } from 'react';
+import { sendMagicLink } from '../actions';
+import AuthHashForwarder from '@/app/_components/AuthHashForwarder'; // 👈 añadido
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Si llega ?error=1 avisamos
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get('error')) alert('El enlace es inválido o expiró. Pide uno nuevo.');
-  }, []);
-
-  async function handleSend(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const supabase = supabaseBrowser();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-      },
-    });
-    if (error) return alert(error.message);
-    setSent(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const ok = await sendMagicLink(email);
+      if (!ok) throw new Error('No se pudo enviar el enlace');
+      setSent(true);
+    } catch (err: any) {
+      setError(err?.message ?? 'Error desconocido');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <main className="container mx-auto px-4 py-10">
+        <AuthHashForwarder /> {/* 👈 añadido */}
+        <h1 className="text-2xl font-bold">Revisa tu correo</h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          Te enviamos un enlace de acceso. Ábrelo desde este mismo
+          dispositivo/navegador.
+        </p>
+      </main>
+    );
   }
 
   return (
-    <div className="max-w-md mx-auto space-y-6">
-      <h1 className="text-xl font-semibold">Entrar</h1>
-
-      {/* --- Formulario para pedir el Magic Link --- */}
-      <form onSubmit={handleSend} className="space-y-3">
-        <label className="block text-sm">Correo</label>
+    <main className="container mx-auto px-4 py-10">
+      <AuthHashForwarder /> {/* 👈 añadido */}
+      <h1 className="text-2xl font-bold mb-4">Iniciar sesión</h1>
+      <form onSubmit={onSubmit} className="max-w-sm space-y-3">
         <input
           type="email"
           required
+          placeholder="tucorreo@ejemplo.com"
+          className="w-full rounded border px-3 py-2"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="tu@correo.com"
-          className="w-full border rounded px-3 py-2"
         />
-        <button className="px-4 py-2 bg-black text-white rounded">
-          Enviar Magic Link
-        </button>
-        {sent && (
-          <p className="text-sm text-neutral-600">
-            Revisa tu correo y abre el enlace para iniciar sesión.
-          </p>
-        )}
-      </form>
-
-      {/* --- Crear/actualizar perfil --- */}
-      <form>
         <button
-          className="mt-6 text-sm underline"
           type="submit"
-          formAction={upsertProfile}
+          disabled={loading}
+          className="btn btn-primary"
         >
-          Ya entré con el enlace — Crear/actualizar mi perfil
+          {loading ? 'Enviando…' : 'Enviar enlace mágico'}
         </button>
+        {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
-    </div>
+    </main>
   );
 }
