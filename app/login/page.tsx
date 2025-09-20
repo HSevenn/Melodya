@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { sendMagicLink } from '../actions';
-import AuthHashForwarder from '@/app/_components/AuthHashForwarder'; // para convertir #access_token → query
+import AuthHashForwarder from '@/app/_components/AuthHashForwarder'; // mueve #access_token → query
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,12 +17,11 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // ✅ sendMagicLink espera FormData (no string)
+      // ✅ Server Action espera FormData y no retorna valor usable
       const fd = new FormData();
       fd.append('email', email);
 
-      const ok = await sendMagicLink(fd);
-      if (!ok) throw new Error('No se pudo enviar el enlace');
+      await sendMagicLink(fd);   // ⬅️ sin const ok / sin if (!ok)
       setSent(true);
     } catch (err: any) {
       setError(err?.message ?? 'Error desconocido');
@@ -52,7 +51,7 @@ export default function LoginPage() {
       <form onSubmit={onSubmit} className="max-w-sm space-y-3">
         <input
           type="email"
-          name="email"                // (opcional, útil si luego usas action del form)
+          name="email"
           required
           placeholder="tucorreo@ejemplo.com"
           className="w-full rounded border px-3 py-2"
