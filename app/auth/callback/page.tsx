@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
@@ -17,9 +17,15 @@ export default function AuthCallbackPage() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
+  // Evita que StrictMode monte/ejecute 2 veces en dev
+  const alreadyRan = useRef(false);
+
   useEffect(() => {
+    if (alreadyRan.current) return;
+    alreadyRan.current = true;
+
     const doExchange = async () => {
-      // Si Supabase devolvió un error por querystring, muéstralo.
+      // 0) Errores de Supabase en el querystring
       const qsError = params.get('error_description') || params.get('error');
       if (qsError) {
         setStatus('error');
@@ -27,15 +33,31 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // Supabase con PKCE llega con ?code=...
-      const code = params.get('code');
+      // 1) Supabase con PKCE usa ?code=...
+      let code = params.get('code');
+
+      // 2) Fallback: algunos clientes de correo ponen info en el hash (#)
+      if (!code && typeof window !== 'undefined' && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        // No sirve para PKCE, pero al menos damos un mensaje más claro
+        if (hashParams.get('access_token')) {
+          setStatus('error');
+          setErrorMsg(
+            'Este enlace no es de PKCE (?code). Reenvíalo desde aquí y ábrelo con un clic normal.'
+          );
+          // Limpia el hash para no confundir luego
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+          return;
+        }
+      }
+
       if (!code) {
         setStatus('error');
         setErrorMsg('No se encontró el código de autenticación.');
         return;
       }
 
-      // Intercambia el código por una sesión (usa el code_verifier guardado por supabase en este mismo navegador)
+      // 3) Intercambia el código por una sesión (usa el code_verifier guardado por supabase en este navegador)
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
         setStatus('error');
@@ -44,11 +66,10 @@ export default function AuthCallbackPage() {
       }
 
       setStatus('ok');
-      // Redirige a donde prefieras (home por ahora)
-      router.replace('/');
+      router.replace('/'); // destino post-login
     };
 
-    doExchange();
+    void doExchange();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
