@@ -11,13 +11,13 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Cliente de Supabase en el navegador
+  // 👇 Forzamos flujo IMPLICIT (token en el hash). ¡Adiós code_verifier!
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
-        // PKCE por defecto; necesario para Magic Link moderno
+        flowType: 'implicit',
         autoRefreshToken: true,
         detectSessionInUrl: true,
         persistSession: true,
@@ -31,7 +31,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const origin = window.location.origin;
+      const origin = window.location.origin; // envía de vuelta al MISMO dominio
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: `${origin}/auth/callback` },
@@ -47,18 +47,18 @@ export default function LoginPage() {
 
   if (sent) {
     return (
-      <main className="container mx-auto px-4 py-10">
+      <main className="mx-auto max-w-md px-4 py-10">
         <AuthHashForwarder />
         <h1 className="text-2xl font-bold">Revisa tu correo</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Te enviamos un enlace de acceso. Ábrelo desde este mismo dispositivo/navegador.
+          Ábrelo desde este mismo dispositivo/navegador.
         </p>
       </main>
     );
   }
 
   return (
-    <main className="container mx-auto px-4 py-10">
+    <main className="mx-auto max-w-md px-4 py-10">
       <AuthHashForwarder />
       <h1 className="text-2xl font-bold mb-4">Iniciar sesión</h1>
 
