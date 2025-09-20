@@ -2,8 +2,8 @@
 'use client';
 
 import { useState } from 'react';
-import { sendMagicLink } from '../actions';
-import AuthHashForwarder from '@/app/_components/AuthHashForwarder'; // mueve #access_token → query
+import { createBrowserClient } from '@supabase/ssr';
+import AuthHashForwarder from '@/app/_components/AuthHashForwarder';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,20 +11,35 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Cliente de Supabase en el navegador
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        // PKCE por defecto; necesario para Magic Link moderno
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        persistSession: true,
+      },
+    }
+  );
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      // ✅ Server Action espera FormData y no retorna valor usable
-      const fd = new FormData();
-      fd.append('email', email);
-
-      await sendMagicLink(fd);   // ⬅️ sin const ok / sin if (!ok)
+      const origin = window.location.origin;
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${origin}/auth/callback` },
+      });
+      if (error) throw error;
       setSent(true);
     } catch (err: any) {
-      setError(err?.message ?? 'Error desconocido');
+      setError(err?.message ?? 'No se pudo enviar el enlace. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -36,8 +51,7 @@ export default function LoginPage() {
         <AuthHashForwarder />
         <h1 className="text-2xl font-bold">Revisa tu correo</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Te enviamos un enlace de acceso. Ábrelo desde este mismo
-          dispositivo/navegador.
+          Te enviamos un enlace de acceso. Ábrelo desde este mismo dispositivo/navegador.
         </p>
       </main>
     );
@@ -51,18 +65,15 @@ export default function LoginPage() {
       <form onSubmit={onSubmit} className="max-w-sm space-y-3">
         <input
           type="email"
-          name="email"
           required
           placeholder="tucorreo@ejemplo.com"
           className="w-full rounded border px-3 py-2"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-
         <button type="submit" disabled={loading} className="btn btn-primary">
           {loading ? 'Enviando…' : 'Enviar enlace mágico'}
         </button>
-
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
     </main>
