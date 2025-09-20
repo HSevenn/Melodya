@@ -13,10 +13,24 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     (async () => {
       try {
-        const code = params.get('code');
         const next = params.get('next') || '/';
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+        const code = params.get('code');
 
-        // Si viene como ?code=..., hacemos el intercambio en CLIENTE
+        // Caso 1: tokens directos (cuando el link llegó como /#access_token=... y
+        // el AuthHashForwarder los pasó a query)
+        if (access_token && refresh_token) {
+          const { error } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+          if (error) throw error;
+          router.replace(next);
+          return;
+        }
+
+        // Caso 2: código (PKCE/Magic Link moderno)
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
@@ -24,9 +38,8 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // Si no hay code, puede que ya vengamos con tokens (caso hash → route.ts)
-        // En ese caso, simplemente redirigimos a home (o a 'next' si estuviera).
-        router.replace(next);
+        // Sin parámetros válidos: vuelve al inicio
+        router.replace('/');
       } catch (e: any) {
         setErr(e?.message ?? 'No se pudo completar el inicio de sesión.');
       }
