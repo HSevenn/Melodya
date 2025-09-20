@@ -1,76 +1,150 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
+// Evita prerender/caché de esta ruta: se ejecuta sólo en el navegador.
 export const dynamic = 'force-dynamic';
 
-function AuthCallbackInner() {
+export default function AuthCallbackPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const [error, setError] = useState<string | null>(null);
+  const supabase = supabaseBrowser();
+
+  const [status, setStatus] = useState<'working' | 'ok' | 'error'>('working');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
-    (async () => {
-      const supabase = supabaseBrowser();
-
-      // soporte de ?code=... y de hash tipo #access_token=... (algunos clientes)
-      const code = params.get('code');
-      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const accessToken = hashParams.get('access_token');
-
-      try {
-        if (code) {
-          // ✅ IMPORTANTE: pasar el string, no { code }
-          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
-          if (exErr) throw exErr;
-          router.replace('/');
-          return;
-        }
-
-        if (accessToken) {
-          // fallback raro: setSession con access_token (por si el cliente de correo lo pone en el hash)
-          const refreshToken = hashParams.get('refresh_token') ?? undefined;
-          const { error: setErr } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken!,
-          } as any);
-          if (setErr) throw setErr;
-          router.replace('/');
-          return;
-        }
-
-        setError('No se encontró código de autenticación.');
-      } catch (e: any) {
-        setError(e?.message ?? 'No se pudo completar el login.');
+    const doExchange = async () => {
+      // Si Supabase devolvió un error por querystring, muéstralo.
+      const qsError = params.get('error_description') || params.get('error');
+      if (qsError) {
+        setStatus('error');
+        setErrorMsg(qsError);
+        return;
       }
-    })();
+
+      // Supabase con PKCE llega con ?code=...
+      const code = params.get('code');
+      if (!code) {
+        setStatus('error');
+        setErrorMsg('No se encontró el código de autenticación.');
+        return;
+      }
+
+      // Intercambia el código por una sesión (usa el code_verifier guardado por supabase en este mismo navegador)
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        setStatus('error');
+        setErrorMsg(error.message || 'No se pudo completar con el código.');
+        return;
+      }
+
+      setStatus('ok');
+      // Redirige a donde prefieras (home por ahora)
+      router.replace('/');
+    };
+
+    doExchange();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params]);
+
+  // Reenviar Magic Link usando el correo guardado en /app/login/page.tsx (sessionStorage)
+  const handleResend = async () => {
+    if (resendLoading || resendCooldown > 0) return;
+
+    const email = sessionStorage.getItem('melodya:lastEmail');
+    if (!email) {
+      setErrorMsg('No tengo el correo para reenviar. Vuelve a "Entrar" e ingrésalo primero.');
+      return;
+    }
+
+    setResendLoading(true);
+    setErrorMsg(null);
+
+    const origin = window.location.origin;
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${origin}/auth/callback` },
+    });
+
+    setResendLoading(false);
+
+    if (error) {
+      setErrorMsg(error.message || 'No se pudo reenviar el enlace.');
+      return;
+    }
+
+    // Pequeño cooldown para evitar rate limits
+    setResendCooldown(60);
+  };
+
+  // Timer para el cooldown del botón “Reenviar”
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
 
   return (
-    <main className="container mx-auto max-w-md p-6">
-      <h1 className="text-xl font-semibold mb-2">Conectando…</h1>
-      {error ? (
-        <>
-          <p className="text-red-500 mb-3">{error}</p>
-          <p className="text-sm">
-            Consejo: abre el enlace del correo con un clic normal (no copiar/pegar) y en este mismo
-            navegador. Si falla, vuelve a solicitarlo desde “Entrar”.
-          </p>
-        </>
-      ) : (
-        <p>Un momento por favor…</p>
-      )}
-    </main>
-  );
-}
+    <div style={{ maxWidth: 520, margin: '40px auto', padding: '0 16px' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800 }}>Melodya</h1>
+        <button
+          onClick={() => router.push('/login')}
+          style={{
+            padding: '8px 14px',
+            borderRadius: 8,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          Entrar
+        </button>
+      </header>
 
-export default function Page() {
-  return (
-    <Suspense fallback={<main className="container mx-auto max-w-md p-6">Cargando…</main>}>
-      <AuthCallbackInner />
-    </Suspense>
+      <main style={{ marginTop: 28 }}>
+        <h2 style={{ fontSize: 20, marginBottom: 6 }}>Conectando…</h2>
+        <p style={{ opacity: 0.8, marginBottom: 14 }}>Un momento por favor.</p>
+
+        {status === 'error' && (
+          <>
+            <p style={{ color: '#b91c1c', fontWeight: 600, marginTop: 8 }}>
+              {errorMsg || 'No se pudo completar con el código. Puedes reenviar un enlace seguro.'}
+            </p>
+
+            <div style={{ marginTop: 14 }}>
+              <button
+                onClick={handleResend}
+                disabled={resendLoading || resendCooldown > 0}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#111827',
+                  color: '#fff',
+                  cursor: resendLoading || resendCooldown > 0 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {resendLoading
+                  ? 'Enviando…'
+                  : resendCooldown > 0
+                  ? `Reenviar enlace mágico (${resendCooldown})`
+                  : 'Reenviar enlace mágico (seguro)'}
+              </button>
+
+              <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                Consejo: abre el nuevo enlace con un clic normal (no copiar/pegar) y en este mismo
+                navegador.
+              </p>
+            </div>
+          </>
+        )}
+      </main>
+    </div>
   );
 }
