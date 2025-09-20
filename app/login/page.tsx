@@ -21,15 +21,13 @@ export default function LoginPage() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [cooldown, setCooldown] = useState(0); // seg. para reenviar
+  const [cooldown, setCooldown] = useState(0);
 
-  // si teníamos guardado el correo (para reenviar desde callback en el pasado)
   useEffect(() => {
     const saved = sessionStorage.getItem('melodya:lastEmail');
     if (saved && !email) setEmail(saved);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // temporizador de cooldown
   useEffect(() => {
     if (cooldown <= 0) return;
     const t = setInterval(() => setCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
@@ -43,7 +41,7 @@ export default function LoginPage() {
     setSending(true);
     setError(null);
 
-    // ❗ No uses emailRedirectTo para que NO mande magic link
+    // ❗ Enviamos OTP (no usamos emailRedirectTo)
     const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
       options: { shouldCreateUser: true },
@@ -56,15 +54,15 @@ export default function LoginPage() {
       return;
     }
 
-    // guardamos para “Reenviar”
     sessionStorage.setItem('melodya:lastEmail', email.trim().toLowerCase());
     setStep('code');
-    setCooldown(30); // 30s de espera para reenviar
+    setCooldown(30);
   };
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !code) return;
+
     setVerifying(true);
     setError(null);
 
@@ -72,7 +70,7 @@ export default function LoginPage() {
     const { error: err } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(),
       token: code.trim(),
-      type: 'email', // OTP por email (NO magiclink)
+      type: 'email',
     });
 
     setVerifying(false);
@@ -82,7 +80,6 @@ export default function LoginPage() {
       return;
     }
 
-    // OK -> a la home (o donde prefieras)
     router.replace('/');
   };
 
@@ -144,35 +141,22 @@ export default function LoginPage() {
               placeholder="tucorreo@ejemplo.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={{
-                height: 44,
-                borderRadius: 10,
-                border: '1px solid #d1d5db',
-                padding: '0 12px',
-              }}
+              style={{ height: 44, borderRadius: 10, border: '1px solid #d1d5db', padding: '0 12px' }}
             />
 
             <button
               type="submit"
               disabled={sending || !email}
               style={{
-                height: 44,
-                borderRadius: 10,
-                border: 'none',
-                background: '#111827',
-                color: '#fff',
-                fontWeight: 600,
+                height: 44, borderRadius: 10, border: 'none',
+                background: '#111827', color: '#fff', fontWeight: 600,
                 cursor: sending || !email ? 'not-allowed' : 'pointer',
               }}
             >
               {sending ? 'Enviando…' : 'Enviar código'}
             </button>
 
-            {error && (
-              <p style={{ color: '#b91c1c', marginTop: 6, fontWeight: 600 }}>
-                {error}
-              </p>
-            )}
+            {error && <p style={{ color: '#b91c1c', marginTop: 6, fontWeight: 600 }}>{error}</p>}
           </form>
         )}
 
@@ -191,11 +175,8 @@ export default function LoginPage() {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               style={{
-                height: 44,
-                borderRadius: 10,
-                border: '1px solid #d1d5db',
-                padding: '0 12px',
-                letterSpacing: 2,
+                height: 44, borderRadius: 10, border: '1px solid #d1d5db',
+                padding: '0 12px', letterSpacing: 2,
               }}
             />
 
@@ -203,12 +184,8 @@ export default function LoginPage() {
               type="submit"
               disabled={verifying || code.length !== 6}
               style={{
-                height: 44,
-                borderRadius: 10,
-                border: 'none',
-                background: '#111827',
-                color: '#fff',
-                fontWeight: 600,
+                height: 44, borderRadius: 10, border: 'none',
+                background: '#111827', color: '#fff', fontWeight: 600,
                 cursor: verifying || code.length !== 6 ? 'not-allowed' : 'pointer',
               }}
             >
@@ -220,25 +197,14 @@ export default function LoginPage() {
               onClick={handleResend}
               disabled={sending || cooldown > 0}
               style={{
-                height: 42,
-                borderRadius: 10,
-                border: '1px solid #d1d5db',
-                background: '#fff',
-                cursor: sending || cooldown > 0 ? 'not-allowed' : 'pointer',
+                height: 42, borderRadius: 10, border: '1px solid #d1d5db',
+                background: '#fff', cursor: sending || cooldown > 0 ? 'not-allowed' : 'pointer',
               }}
             >
-              {sending
-                ? 'Reenviando…'
-                : cooldown > 0
-                ? `Reenviar código (${cooldown})`
-                : 'Reenviar código'}
+              {sending ? 'Reenviando…' : cooldown > 0 ? `Reenviar código (${cooldown})` : 'Reenviar código'}
             </button>
 
-            {error && (
-              <p style={{ color: '#b91c1c', marginTop: 6, fontWeight: 600 }}>
-                {error}
-              </p>
-            )}
+            {error && <p style={{ color: '#b91c1c', marginTop: 6, fontWeight: 600 }}>{error}</p>}
           </form>
         )}
       </main>
