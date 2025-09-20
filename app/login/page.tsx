@@ -1,119 +1,105 @@
+// app/login/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
-type Step = 'request' | 'verify';
+type Step = 'email' | 'otp';
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = supabaseBrowser();
 
-  const [step, setStep] = useState<Step>('request');
+  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [token, setToken] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  const requestCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    setInfo(null);
+  // Si el usuario ya está logueado, lo mandamos al home
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) router.replace('/');
+    });
+  }, [router, supabase]);
 
-    if (!email) {
-      setErr('Ingresa tu correo.');
-      return;
-    }
+  // Cooldown para “Reenviar código”
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
 
+  async function handleSendOtp(e?: React.FormEvent) {
+    e?.preventDefault();
+    setError(null);
+    if (!email) return setError('Escribe tu correo');
+
+    setSending(true);
     try {
-      setLoading(true);
-
-      // Guardamos el email por si luego quieres reintentar
-      sessionStorage.setItem('melodya:lastEmail', email);
-
-      // Enviar OTP por email (NO usa redirect/callback)
+      // 🔑 Enviar OTP (SIN emailRedirectTo => NO magic link)
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          shouldCreateUser: true, // crea usuario si no existe
-          // sin emailRedirectTo, porque no hay redirección
+          shouldCreateUser: true, // crea cuenta si no existe
         },
       });
-
       if (error) throw error;
 
-      setInfo('Te enviamos un código de 6 dígitos a tu correo.');
-      setStep('verify');
-    } catch (e: any) {
-      setErr(e?.message ?? 'No se pudo enviar el código.');
+      // Guardamos por si el usuario vuelve a esta página
+      sessionStorage.setItem('melodya:lastEmail', email);
+
+      setStep('otp');
+      setResendCooldown(30); // evita spam
+    } catch (err: any) {
+      setError(err?.message ?? 'No se pudo enviar el código');
     } finally {
-      setLoading(false);
+      setSending(false);
     }
-  };
+  }
 
-  const verifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr(null);
-    setInfo(null);
+  async function handleVerify(e?: React.FormEvent) {
+    e?.preventDefault();
+    setError(null);
+    if (!token || token.length < 6) return setError('Escribe el código de 6 dígitos');
 
-    if (!email || !token) {
-      setErr('Completa correo y código.');
-      return;
-    }
-
+    setVerifying(true);
     try {
-      setLoading(true);
-
-      // Verificar OTP (tipo 'email')
-      const { error } = await supabase.auth.verifyOtp({
+      // ✅ Verificar OTP
+      const { data, error } = await supabase.auth.verifyOtp({
         email,
         token,
-        type: 'email',
+        type: 'email', // OTP por correo
       });
-
       if (error) throw error;
+      if (!data.session) throw new Error('No se pudo iniciar sesión');
 
-      // Sesión creada. Redirige al home (o donde quieras)
       router.replace('/');
-    } catch (e: any) {
-      setErr(e?.message ?? 'Código inválido o expirado.');
+    } catch (err: any) {
+      setError(err?.message ?? 'Código inválido o expirado');
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
-  };
+  }
 
-  const resend = async () => {
-    setErr(null);
-    setInfo(null);
+  async function handleResend() {
+    if (resendCooldown > 0) return;
+    if (!email) return setError('No tengo el correo para reenviar');
 
-    try {
-      setLoading(true);
-      const targetEmail =
-        email || sessionStorage.getItem('melodya:lastEmail') || '';
-
-      if (!targetEmail) {
-        setErr('No tengo un correo para reenviar. Escribe tu correo otra vez.');
-        setStep('request');
-        return;
-      }
-
-      const { error } = await supabase.auth.signInWithOtp({
-        email: targetEmail,
-        options: { shouldCreateUser: true },
-      });
-      if (error) throw error;
-
-      setInfo('Hemos reenviado el código a tu correo.');
-      if (!email) setEmail(targetEmail);
-      setStep('verify');
-    } catch (e: any) {
-      setErr(e?.message ?? 'No se pudo reenviar el código.');
-    } finally {
-      setLoading(false);
+    setError(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    if (error) {
+      setError(error.message);
+    } else {
+      setResendCooldown(30);
     }
-  };
+  }
 
   return (
     <div style={{ maxWidth: 520, margin: '40px auto', padding: '0 16px' }}>
@@ -134,122 +120,87 @@ export default function LoginPage() {
       </header>
 
       <main style={{ marginTop: 28 }}>
-        <h2 style={{ fontSize: 20, marginBottom: 6 }}>
-          {step === 'request' ? 'Iniciar sesión' : 'Verificar código'}
+        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>
+          {step === 'email' ? 'Entrar' : 'Verificar código'}
         </h2>
 
-        <p style={{ opacity: 0.8, marginBottom: 14 }}>
-          {step === 'request'
-            ? 'Te enviaremos un código de 6 dígitos a tu correo.'
-            : 'Escribe el código de 6 dígitos que te llegó por correo.'}
-        </p>
-
-        {err && (
-          <p style={{ color: '#b91c1c', fontWeight: 600, marginBottom: 10 }}>{err}</p>
-        )}
-        {info && (
-          <p style={{ color: '#065f46', fontWeight: 600, marginBottom: 10 }}>{info}</p>
+        {error && (
+          <p style={{ color: '#b91c1c', fontWeight: 600, marginBottom: 12 }}>{error}</p>
         )}
 
-        {step === 'request' ? (
-          <form onSubmit={requestCode}>
+        {step === 'email' ? (
+          <form onSubmit={handleSendOtp} style={{ display: 'grid', gap: 10 }}>
             <input
               type="email"
+              placeholder="tucorreo@ejemplo.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="tucorreo@ejemplo.com"
               required
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #d1d5db',
-                marginBottom: 10,
-              }}
+              style={{ padding: 12, borderRadius: 8, border: '1px solid #d1d5db' }}
             />
             <button
               type="submit"
-              disabled={loading}
+              disabled={sending}
               style={{
-                width: '100%',
-                padding: '10px 14px',
+                padding: '12px 14px',
                 borderRadius: 8,
                 border: 'none',
                 background: '#111827',
                 color: '#fff',
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: sending ? 'not-allowed' : 'pointer',
+                fontWeight: 700,
               }}
             >
-              {loading ? 'Enviando…' : 'Enviar código'}
+              {sending ? 'Enviando…' : 'Enviar código'}
             </button>
           </form>
         ) : (
-          <form onSubmit={verifyCode}>
+          <form onSubmit={handleVerify} style={{ display: 'grid', gap: 10 }}>
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tucorreo@ejemplo.com"
-              required
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #d1d5db',
-                marginBottom: 10,
-              }}
+              disabled
+              style={{ padding: 12, borderRadius: 8, border: '1px solid #d1d5db', opacity: 0.8 }}
             />
             <input
-              type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Código de 6 dígitos"
-              required
               maxLength={6}
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid #d1d5db',
-                marginBottom: 10,
-                letterSpacing: 2,
-                textAlign: 'center',
-                fontWeight: 700,
-              }}
+              placeholder="Código de 6 dígitos"
+              value={token}
+              onChange={(e) => setToken(e.target.value.replace(/\D/g, ''))}
+              style={{ padding: 12, borderRadius: 8, border: '1px solid #d1d5db', letterSpacing: 4 }}
             />
             <button
               type="submit"
-              disabled={loading}
+              disabled={verifying}
               style={{
-                width: '100%',
-                padding: '10px 14px',
+                padding: '12px 14px',
                 borderRadius: 8,
                 border: 'none',
                 background: '#111827',
                 color: '#fff',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                marginBottom: 10,
+                cursor: verifying ? 'not-allowed' : 'pointer',
+                fontWeight: 700,
               }}
             >
-              {loading ? 'Verificando…' : 'Verificar'}
+              {verifying ? 'Verificando…' : 'Verificar'}
             </button>
 
             <button
               type="button"
-              onClick={resend}
-              disabled={loading}
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
               style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid #d1d5db',
-                background: '#fff',
-                cursor: loading ? 'not-allowed' : 'pointer',
+                marginTop: 4,
+                background: 'transparent',
+                border: 'none',
+                color: '#111827',
+                textDecoration: 'underline',
+                cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer',
               }}
             >
-              Reenviar código
+              {resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : 'Reenviar código'}
             </button>
           </form>
         )}
