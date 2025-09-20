@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase-browser'; // 👈 tu cliente existente (sin helpers)
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
   const params = useSearchParams();
   const [err, setErr] = useState<string | null>(null);
+
+  // Cliente de Supabase en el navegador (sin helpers extra)
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
     (async () => {
@@ -17,8 +23,7 @@ export default function AuthCallbackPage() {
         const refresh_token = params.get('refresh_token');
         const code = params.get('code');
 
-        // Caso 1: tokens directos (cuando el link venía como /#access_token=... y
-        // AuthHashForwarder los movió a query)
+        // Caso 1: tokens directos (hash → query por AuthHashForwarder)
         if (access_token && refresh_token) {
           const { error } = await supabase.auth.setSession({
             access_token,
