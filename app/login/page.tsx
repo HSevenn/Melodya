@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { sendMagicLink } from '../actions';
-import AuthHashForwarder from '@/app/_components/AuthHashForwarder'; // 👈 añadido
+import AuthHashForwarder from '@/app/_components/AuthHashForwarder'; // para convertir #access_token → query
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,8 +15,13 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+
     try {
-      const ok = await sendMagicLink(email);
+      // ✅ sendMagicLink espera FormData (no string)
+      const fd = new FormData();
+      fd.append('email', email);
+
+      const ok = await sendMagicLink(fd);
       if (!ok) throw new Error('No se pudo enviar el enlace');
       setSent(true);
     } catch (err: any) {
@@ -29,7 +34,7 @@ export default function LoginPage() {
   if (sent) {
     return (
       <main className="container mx-auto px-4 py-10">
-        <AuthHashForwarder /> {/* 👈 añadido */}
+        <AuthHashForwarder />
         <h1 className="text-2xl font-bold">Revisa tu correo</h1>
         <p className="mt-2 text-sm text-neutral-600">
           Te enviamos un enlace de acceso. Ábrelo desde este mismo
@@ -41,24 +46,24 @@ export default function LoginPage() {
 
   return (
     <main className="container mx-auto px-4 py-10">
-      <AuthHashForwarder /> {/* 👈 añadido */}
+      <AuthHashForwarder />
       <h1 className="text-2xl font-bold mb-4">Iniciar sesión</h1>
+
       <form onSubmit={onSubmit} className="max-w-sm space-y-3">
         <input
           type="email"
+          name="email"                // (opcional, útil si luego usas action del form)
           required
           placeholder="tucorreo@ejemplo.com"
           className="w-full rounded border px-3 py-2"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn btn-primary"
-        >
+
+        <button type="submit" disabled={loading} className="btn btn-primary">
           {loading ? 'Enviando…' : 'Enviar enlace mágico'}
         </button>
+
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
     </main>
