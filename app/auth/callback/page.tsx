@@ -1,17 +1,17 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 
-// Evitamos SSG/ISR para esta ruta especial de login
+// Evitar SSG/ISR aquí
 export const dynamic = 'force-dynamic';
 
 export default function AuthCallbackPage() {
   return (
     <Suspense
       fallback={
-        <main className="container mx-auto px-4 py-10">
+        <main className="mx-auto max-w-md px-4 py-10">
           <h1 className="text-xl font-semibold">Conectando…</h1>
           <p className="text-sm text-neutral-600">Un momento por favor.</p>
         </main>
@@ -27,7 +27,6 @@ function CallbackInner() {
   const params = useSearchParams();
   const [err, setErr] = useState<string | null>(null);
 
-  // Cliente de Supabase en el navegador (sin helpers extra)
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -37,30 +36,37 @@ function CallbackInner() {
     const run = async () => {
       try {
         const next = params.get('next') || '/';
-        const access_token = params.get('access_token');
-        const refresh_token = params.get('refresh_token');
-        const code = params.get('code');
 
-        // Caso 1: tokens directos (hash → query con AuthHashForwarder)
+        // 1) Si llegan tokens, setSession directo
+        const url = new URL(window.location.href);
+        const access_q = url.searchParams.get('access_token');
+        const refresh_q = url.searchParams.get('refresh_token');
+        const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+        const access_h = hash.get('access_token');
+        const refresh_h = hash.get('refresh_token');
+        const access_token = access_q || access_h || '';
+        const refresh_token = refresh_q || refresh_h || '';
+
         if (access_token && refresh_token) {
           const { error } = await supabase.auth.setSession({
             access_token,
-            refresh_token,
+            refresh_token
           });
           if (error) throw error;
           router.replace(next);
           return;
         }
 
-        // Caso 2: código PKCE/Magic Link
+        // 2) PKCE: pásale a Supabase la URL completa (no solo el code)
+        const code = url.searchParams.get('code');
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          const { error } = await supabase.auth.exchangeCodeForSession(url.toString());
           if (error) throw error;
           router.replace(next);
           return;
         }
 
-        // Sin parámetros válidos → al inicio
+        // 3) Nada útil → a inicio
         router.replace('/');
       } catch (e: any) {
         setErr(e?.message ?? 'No se pudo completar el inicio de sesión.');
@@ -72,7 +78,7 @@ function CallbackInner() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-10">
+    <main className="mx-auto max-w-md px-4 py-10">
       <h1 className="text-xl font-semibold">Conectando…</h1>
       <p className="text-sm text-neutral-600">Un momento por favor.</p>
       {err && <p className="mt-3 text-sm text-red-500">{err}</p>}
