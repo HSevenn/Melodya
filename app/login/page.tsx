@@ -1,4 +1,3 @@
-// app/login/page.tsx
 'use client';
 
 import { useState } from 'react';
@@ -11,7 +10,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 👇 Forzamos flujo IMPLICIT (token en el hash). ¡Adiós code_verifier!
+  // Cliente con flujo implicit (tokens en el hash)
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -31,9 +30,12 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const origin = window.location.origin; // envía de vuelta al MISMO dominio
+      // Guardamos el email para que el callback pueda re-enviar si hace falta
+      localStorage.setItem('pending-email', email.trim());
+
+      const origin = window.location.origin;
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: email.trim(),
         options: { emailRedirectTo: `${origin}/auth/callback` },
       });
       if (error) throw error;
@@ -51,7 +53,7 @@ export default function LoginPage() {
         <AuthHashForwarder />
         <h1 className="text-2xl font-bold">Revisa tu correo</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          Ábrelo desde este mismo dispositivo/navegador.
+          Abre el enlace desde este mismo navegador/dispositivo.
         </p>
       </main>
     );
