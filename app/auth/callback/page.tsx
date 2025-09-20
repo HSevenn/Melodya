@@ -2,107 +2,116 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase-browser'; // ✅ usa tu cliente
 
 function AuthCallbackInner() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const supabase = createClient();
-
-  const [status, setStatus] = useState<'checking' | 'ok' | 'error'>('checking');
-  const [message, setMessage] = useState<string>('Conectando... Un momento por favor.');
+  const params = useSearchParams();
+  const [error, setError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
+    let timer: any;
+
     async function run() {
       try {
-        // 0) Si ya hay sesión, listo
-        const { data: s0 } = await supabase.auth.getSession();
-        if (s0?.session) {
-          setStatus('ok');
-          return router.replace('/');
+        setError(null);
+
+        // 1) ¿Viene un "code" (PKCE)?
+        const code = params.get('code');
+
+        // 2) ¿Viene access_token en el hash?
+        const hash = typeof window !== 'undefined' ? window.location.hash : '';
+        const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
+        const accessToken = hashParams.get('access_token');
+
+        if (code) {
+          // ✅ Intercambia el code por la sesión
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+          if (exErr) throw exErr;
+          router.replace('/'); // éxito
+          return;
         }
 
-        // 1) Posibles parámetros de callback
-        const code = sp.get('code') ?? '';
-        const codeVerifier = sp.get('code_verifier') ?? ''; // PKCE
-        const tokenHash = sp.get('token_hash') ?? '';       // Magic Link / confirm
-        const type = (sp.get('type') ?? '') as
-          | 'magiclink' | 'recovery' | 'invite'
-          | 'signup' | 'email_change';
-
-        // 2) Flujos soportados
-        if (code && codeVerifier) {
-          // ➜ PKCE / OAuth
-          const { error } = await supabase.auth.exchangeCodeForSession({ code, codeVerifier });
-          if (error) throw error;
-          setStatus('ok');
-          return router.replace('/');
+        if (accessToken) {
+          // ✅ Si llega access_token en el hash, úsalo
+          const { data, error: setErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: hashParams.get('refresh_token') ?? '',
+          });
+          if (setErr || !data.session) throw setErr ?? new Error('No session');
+          router.replace('/');
+          return;
         }
 
-        if (tokenHash && type) {
-          // ➜ Magic Link / confirmación por email (hash)
-          const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-          if (error) throw error;
-          setStatus('ok');
-          return router.replace('/');
-        }
-
-        // 3) Si no hay params, intenta leer sesión otra vez por si el SDK ya guardó token
-        const { data: s1 } = await supabase.auth.getSession();
-        if (s1?.session) {
-          setStatus('ok');
-          return router.replace('/');
-        }
-
-        // 4) Nada funcionó: pedimos reintentar
-        setStatus('error');
-        setMessage(
-          'No se pudo completar con el código. Puedes reenviar un enlace seguro.'
-        );
+        // ❌ Si no hay nada válido:
+        setError('No se pudo completar con el código. Puedes reenviar un enlace seguro.');
       } catch (e: any) {
-        console.error('Auth callback error:', e);
-        setStatus('error');
-        setMessage(e?.message || 'No se pudo completar el inicio de sesión.');
+        setError(e?.message || 'No se pudo conectar.');
       }
     }
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  const handleResend = () => {
-    // Lo llevamos al login para reenviar el enlace mágico
-    router.replace('/login?resend=1');
+    // pequeño cooldown si se reenvía
+    if (cooldown > 0) {
+      timer = setInterval(() => setCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [params, router, cooldown]);
+
+  const resendSecure = async () => {
+    if (cooldown > 0) return;
+    // intentamos recuperar el email que guardaste en /login
+    const email = sessionStorage.getItem('last_email') || localStorage.getItem('last_email');
+    if (!email) {
+      setError('Abre /login y pide un enlace nuevo.');
+      return;
+    }
+    setError(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        shouldCreateUser: true,
+      },
+    });
+    if (error) {
+      setError(error.message);
+    } else {
+      setCooldown(30);
+      setError('Enlace reenviado. Ábrelo con un clic normal en este navegador.');
+    }
   };
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10">
-      <h1 className="text-2xl font-bold mb-6 text-center">Melodya</h1>
+    <div style={{ maxWidth: 560, margin: '40px auto', padding: 16 }}>
+      <h1>Melodya</h1>
+      <h2 style={{ marginTop: 16 }}>Conectando…</h2>
+      <p>Un momento por favor.</p>
 
-      {status === 'checking' && (
-        <div className="rounded-lg border p-4 text-sm">
-          <p className="font-medium">Conectando…</p>
-          <p className="opacity-70">Un momento por favor.</p>
-        </div>
-      )}
-
-      {status === 'error' && (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-red-400/40 bg-red-500/5 p-4 text-sm">
-            <p className="font-medium text-red-600 dark:text-red-400">Hubo un problema</p>
-            <p className="opacity-80">{message}</p>
+      {error && (
+        <div style={{ marginTop: 12, color: '#b91c1c' }}>
+          {error}
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={resendSecure}
+              disabled={cooldown > 0}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                border: '1px solid #444',
+                background: cooldown > 0 ? '#eee' : '#fff',
+                cursor: cooldown > 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Reenviar enlace mágico (seguro)
+              {cooldown > 0 ? ` — espera ${cooldown}s` : ''}
+            </button>
           </div>
-
-          <button
-            onClick={handleResend}
-            className="w-full rounded-md border px-4 py-2 text-center text-sm font-medium hover:bg-black/5"
-          >
-            Reenviar enlace mágico (seguro)
-          </button>
-
-          <p className="text-xs opacity-70">
-            Consejo: abre el nuevo enlace con un clic normal (sin copiar/pegar) y en este mismo
-            navegador. Si usas la app de Gmail, mejor ábrelo en el navegador por defecto.
+          <p style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+            Consejo: abre el nuevo enlace con un clic normal (no copiar/pegar) y en este mismo
+            navegador.
           </p>
         </div>
       )}
@@ -110,18 +119,9 @@ function AuthCallbackInner() {
   );
 }
 
-export default function AuthCallbackPage() {
-  // Suspense evita el warning de Next.js con useSearchParams en build
+export default function Page() {
   return (
-    <Suspense fallback={
-      <div className="mx-auto max-w-md px-4 py-10">
-        <h1 className="text-2xl font-bold mb-6 text-center">Melodya</h1>
-        <div className="rounded-lg border p-4 text-sm">
-          <p className="font-medium">Conectando…</p>
-          <p className="opacity-70">Un momento por favor.</p>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<div style={{ padding: 16 }}>Cargando…</div>}>
       <AuthCallbackInner />
     </Suspense>
   );
