@@ -2,109 +2,65 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase-browser';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
-  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    const clean = email.trim().toLowerCase();
-    if (!clean) {
-      setError('Escribe tu correo.');
-      return;
-    }
-
-    setSending(true);
     try {
-      // Redirige a /auth/callback (debe estar en Redirect URLs en Supabase)
-      const redirectTo =
-        (typeof window !== 'undefined' ? window.location.origin : '') +
+      const supabase = supabaseBrowser();
+
+      const redirect =
+        (process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || window.location.origin) +
         '/auth/callback';
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: clean,
+      const { error: err } = await supabase.auth.signInWithOtp({
+        email,
         options: {
-          emailRedirectTo: redirectTo,
-          // importa para que Supabase use PKCE correctamente en web
           shouldCreateUser: true,
+          emailRedirectTo: redirect,
         },
       });
 
-      if (error) throw error;
+      if (err) throw err;
 
+      // guardo el último correo para reenvío “seguro” desde /auth/callback si lo usas
+      try {
+        localStorage.setItem('sb-last-email', email);
+      } catch {}
       setSent(true);
-    } catch (err: any) {
-      setError(err?.message ?? 'No se pudo enviar el enlace.');
-    } finally {
-      setSending(false);
+    } catch (e: any) {
+      setError(e?.message ?? 'No se pudo enviar el enlace.');
     }
   }
 
-  // UI muy simple y mobile-first
   return (
-    <main className="mx-auto w-full max-w-sm p-6">
-      <h1 className="text-2xl font-bold text-center">Iniciar sesión</h1>
+    <main className="container mx-auto max-w-md p-6">
+      <h1 className="text-2xl font-bold mb-4">Iniciar sesión</h1>
 
       {sent ? (
-        <div className="mt-6 rounded-md border p-4 text-sm">
-          <p className="font-medium">Revisa tu correo</p>
-          <p className="mt-1 opacity-80">
-            Te enviamos un enlace mágico a <strong>{email}</strong>. Ábrelo con
-            un clic normal en este mismo navegador.
-          </p>
-          <button
-            onClick={() => {
-              setSent(false);
-              setEmail('');
-            }}
-            className="btn btn-outline w-full mt-4"
-          >
-            Enviar a otro correo
-          </button>
-        </div>
+        <p className="text-sm">
+          Te enviamos un enlace mágico a <b>{email}</b>. Revísalo y ábrelo con un clic normal.
+        </p>
       ) : (
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <label className="block text-sm">
-            <span className="mb-1 block">Tu correo</span>
-            <input
-              type="email"
-              inputMode="email"
-              placeholder="tucorreo@ejemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 outline-none"
-              required
-            />
-          </label>
-
-          {error && (
-            <p className="text-sm text-red-500">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={sending}
-            className="btn btn-primary w-full disabled:opacity-60"
-          >
-            {sending ? 'Enviando…' : 'Enviar enlace mágico'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            className="btn btn-outline w-full"
-          >
-            Volver al inicio
-          </button>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="tucorreo@ejemplo.com"
+            className="w-full rounded border px-3 py-2"
+          />
+          <button type="submit" className="btn btn-primary">Enviar enlace mágico</button>
+          {error && <p className="text-red-500 text-sm">{error}</p>}
         </form>
       )}
     </main>
