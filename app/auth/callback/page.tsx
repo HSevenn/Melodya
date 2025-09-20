@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabase } from '@/lib/supabase-browser'; // 👈 tu cliente existente (sin helpers)
 
 export default function AuthCallbackPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const supabase = createClientComponentClient();
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,8 +17,8 @@ export default function AuthCallbackPage() {
         const refresh_token = params.get('refresh_token');
         const code = params.get('code');
 
-        // Caso 1: tokens directos (cuando el link llegó como /#access_token=... y
-        // el AuthHashForwarder los pasó a query)
+        // Caso 1: tokens directos (cuando el link venía como /#access_token=... y
+        // AuthHashForwarder los movió a query)
         if (access_token && refresh_token) {
           const { error } = await supabase.auth.setSession({
             access_token,
@@ -30,7 +29,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // Caso 2: código (PKCE/Magic Link moderno)
+        // Caso 2: código PKCE/Magic Link
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
@@ -38,7 +37,7 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        // Sin parámetros válidos: vuelve al inicio
+        // Sin parámetros válidos → al inicio
         router.replace('/');
       } catch (e: any) {
         setErr(e?.message ?? 'No se pudo completar el inicio de sesión.');
