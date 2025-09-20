@@ -1,117 +1,98 @@
+// app/auth/callback/page.tsx
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
-/** ⚙️ Evita prerender y caching de esta ruta */
+// evita cualquier intento de prerender/caché en esta ruta
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-function CallbackInner() {
+export default function AuthCallbackPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const params = useSearchParams();
 
-  const [error, setError] = useState<string | null>(null);
-  const [resending, setResending] = useState(false);
-
-  // Reenvío “seguro” del enlace en caso de que falte el code_verifier
-  async function resendSafeLink() {
-    try {
-      setResending(true);
-      const email = localStorage.getItem('last-login-email');
-      if (!email) throw new Error('No tenemos tu correo para reenviar el enlace.');
-
-      const supabase = supabaseBrowser();
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
-      setError(null);
-      alert('Te reenviamos un enlace. Ábrelo con un clic normal y en este mismo navegador.');
-    } catch (e: any) {
-      setError(e?.message ?? 'No se pudo reenviar el enlace.');
-    } finally {
-      setResending(false);
-    }
-  }
+  const [status, setStatus] = useState<'checking' | 'ok' | 'error'>('checking');
+  const [message, setMessage] = useState<string>('');
 
   useEffect(() => {
-    (async () => {
+    const run = async () => {
+      const code = params.get('code');               // PKCE auth code
+      const error = params.get('error_description') || params.get('error');
+
+      // Si Supabase nos devolvió un error directo en la URL
+      if (error) {
+        setStatus('error');
+        setMessage(error);
+        return;
+      }
+
+      if (!code) {
+        setStatus('error');
+        setMessage('No llegó ningún código de verificación en la URL.');
+        return;
+      }
+
       try {
-        setError(null);
+        const supabase = supabaseBrowser();
 
-        // 1) Supabase con PKCE trae ?code=...
-        const code = searchParams.get('code');
+        // Intercambia el código por una sesión. Supabase usa internamente el
+        // code_verifier guardado en el mismo navegador donde se solicitó el link.
+        const { error: exErr } = await supabase.auth.exchangeCodeForSession({ code });
 
-        // 2) A veces el proveedor deja tokens en el hash (#access_token=...) — limpiar por si acaso
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const accessToken = hashParams.get('access_token');
-
-        if (!code && !accessToken) {
-          // Nada útil: volvemos al inicio
-          router.replace('/');
+        if (exErr) {
+          // Caso típico: “both auth code and code verifier should be non-empty”
+          setStatus('error');
+          setMessage(
+            'No se pudo completar con el código. Puedes reenviar un enlace seguro desde la pantalla de inicio de sesión.'
+          );
           return;
         }
 
-        // Intercambiar el code por la sesión (usa el code_verifier guardado por el SDK)
-        if (code) {
-          const supabase = supabaseBrowser();
-          const { error } = await supabase.auth.exchangeCodeForSession({ code });
-          if (error) throw error;
-        }
-
-        // ✅ Listo: a la home (o a donde prefieras)
+        // Sesión OK → redirigimos al home (o a donde prefieras)
+        setStatus('ok');
         router.replace('/');
       } catch (e: any) {
-        // Si no hay code_verifier válido, Supabase responde con:
-        // “both auth code and code verifier should be non-empty”
-        setError(
-          e?.message ??
-            'No se pudo completar con el código. Puedes reenviar un enlace seguro.'
-        );
+        setStatus('error');
+        setMessage(e?.message ?? 'Error desconocido al validar el enlace.');
       }
-    })();
+    };
+
+    run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className="container mx-auto max-w-xl px-4 py-10">
-      <h1 className="text-2xl font-bold mb-3">Melodya</h1>
-      <h2 className="text-xl font-semibold mb-2">Conectando…</h2>
-      <p className="text-sm text-neutral-500 mb-6">Un momento por favor.</p>
+  if (status === 'checking') {
+    return (
+      <main className="container mx-auto px-4 py-10">
+        <h1 className="text-2xl font-bold mb-2">Conectando…</h1>
+        <p className="text-sm opacity-80">Un momento por favor.</p>
+      </main>
+    );
+  }
 
-      {error && (
-        <div className="rounded-md border border-red-300 bg-red-50 p-3 text-red-700 mb-4">
-          {error}
-        </div>
-      )}
+  if (status === 'error') {
+    return (
+      <main className="container mx-auto px-4 py-10">
+        <h1 className="text-2xl font-bold mb-3">Conectando…</h1>
+        <p className="text-sm text-red-500 mb-4">{message}</p>
 
-      <button
-        type="button"
-        onClick={resendSafeLink}
-        disabled={resending}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-neutral-100 disabled:opacity-50"
-      >
-        Reenviar enlace mágico (seguro)
-      </button>
+        <a
+          href="/login"
+          className="inline-flex items-center rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-100"
+        >
+          Reenviar enlace mágico (seguro)
+        </a>
 
-      <p className="mt-3 text-xs text-neutral-500">
-        Consejo: abre el nuevo enlace con un clic normal (no copiar/pegar) y en este mismo
-        navegador.
-      </p>
-    </div>
-  );
-}
+        <p className="mt-3 text-xs opacity-70">
+          Consejo: abre el nuevo enlace con un clic normal (sin copiar/pegar) y en el mismo
+          navegador donde solicitaste el correo.
+        </p>
+      </main>
+    );
+  }
 
-export default function Page() {
-  // 👇 Esto satisface a Next: cualquier uso de useSearchParams va dentro de Suspense
-  return (
-    <Suspense fallback={<div className="container mx-auto max-w-xl px-4 py-10">Conectando…</div>}>
-      <CallbackInner />
-    </Suspense>
-  );
+  // status === 'ok' → se redirige; dejamos un fallback por si tarda un frame.
+  return null;
 }
