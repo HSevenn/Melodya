@@ -1,22 +1,48 @@
 'use client';
+
 import { useEffect } from 'react';
 
-/** Detecta ?code=... o tokens en el hash y reenvía al callback */
 export default function AuthCodeRedirectClient() {
   useEffect(() => {
-    const url = new URL(window.location.href);
+    try {
+      // No hagas nada si ya estás en /auth/callback
+      if (location.pathname.startsWith('/auth/callback')) return;
 
-    // 1) Supabase con PKCE usa ?code=...
-    const code = url.searchParams.get('code');
+      const url = new URL(location.href);
 
-    // 2) Algunos correos o navegadores ponen tokens en el hash (#access_token=...)
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const accessToken = hashParams.get('access_token');
+      // --- Leer posibles params en QUERY ---
+      const codeQ = url.searchParams.get('code');
+      const atQ = url.searchParams.get('access_token');
+      const rtQ = url.searchParams.get('refresh_token');
 
-    if (code || accessToken) {
-      // Conserva todos los query params y limpia el hash
-      const qs = url.searchParams.toString();
-      window.location.replace(`/auth/callback?${qs}`);
+      // --- Leer posibles params en HASH ---
+      const hash = new URLSearchParams(url.hash.replace(/^#/, ''));
+      const atH = hash.get('access_token');
+      const rtH = hash.get('refresh_token');
+
+      // Si existe code o (access+refresh) en cualquier lado, construimos la redirección
+      const hasTokens = (atQ && rtQ) || (atH && rtH);
+      if (codeQ || hasTokens) {
+        const params = new URLSearchParams();
+
+        if (codeQ) params.set('code', codeQ);
+
+        // Prioriza tokens en QUERY; si no, toma los del HASH
+        const access_token = atQ || atH || '';
+        const refresh_token = rtQ || rtH || '';
+        if (access_token && refresh_token) {
+          params.set('access_token', access_token);
+          params.set('refresh_token', refresh_token);
+        }
+
+        // Preserva ?next= si lo hubiere
+        const next = url.searchParams.get('next');
+        if (next) params.set('next', next);
+
+        location.replace(`/auth/callback?${params.toString()}`);
+      }
+    } catch {
+      // no-op
     }
   }, []);
 
