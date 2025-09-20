@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
-// Evita prerender/caché de esta ruta: se ejecuta sólo en el navegador.
+/** Evita prerender/caché de esta ruta: se ejecuta sólo en el navegador */
 export const dynamic = 'force-dynamic';
 
-export default function AuthCallbackPage() {
+/** Contenido real de la página (usa hooks de cliente como useSearchParams) */
+function AuthCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
   const supabase = supabaseBrowser();
@@ -17,15 +18,9 @@ export default function AuthCallbackPage() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Evita que StrictMode monte/ejecute 2 veces en dev
-  const alreadyRan = useRef(false);
-
   useEffect(() => {
-    if (alreadyRan.current) return;
-    alreadyRan.current = true;
-
     const doExchange = async () => {
-      // 0) Errores de Supabase en el querystring
+      // Si Supabase devolvió un error por querystring, muéstralo.
       const qsError = params.get('error_description') || params.get('error');
       if (qsError) {
         setStatus('error');
@@ -33,31 +28,15 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // 1) Supabase con PKCE usa ?code=...
-      let code = params.get('code');
-
-      // 2) Fallback: algunos clientes de correo ponen info en el hash (#)
-      if (!code && typeof window !== 'undefined' && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        // No sirve para PKCE, pero al menos damos un mensaje más claro
-        if (hashParams.get('access_token')) {
-          setStatus('error');
-          setErrorMsg(
-            'Este enlace no es de PKCE (?code). Reenvíalo desde aquí y ábrelo con un clic normal.'
-          );
-          // Limpia el hash para no confundir luego
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-          return;
-        }
-      }
-
+      // Supabase con PKCE llega con ?code=...
+      const code = params.get('code');
       if (!code) {
         setStatus('error');
         setErrorMsg('No se encontró el código de autenticación.');
         return;
       }
 
-      // 3) Intercambia el código por una sesión (usa el code_verifier guardado por supabase en este navegador)
+      // Intercambia el código por una sesión (usa el code_verifier guardado en este navegador)
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       if (error) {
         setStatus('error');
@@ -66,7 +45,8 @@ export default function AuthCallbackPage() {
       }
 
       setStatus('ok');
-      router.replace('/'); // destino post-login
+      // Redirige a donde prefieras (home por ahora)
+      router.replace('/');
     };
 
     void doExchange();
@@ -167,5 +147,17 @@ export default function AuthCallbackPage() {
         )}
       </main>
     </div>
+  );
+}
+
+/** Export por defecto: envuelve el contenido en Suspense para CSR */
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<div style={{ maxWidth: 520, margin: '40px auto', padding: '0 16px' }}>
+      <h1 style={{ fontSize: 24, fontWeight: 800 }}>Melodya</h1>
+      <p style={{ marginTop: 16 }}>Conectando…</p>
+    </div>}>
+      <AuthCallbackInner />
+    </Suspense>
   );
 }
