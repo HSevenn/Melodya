@@ -5,64 +5,78 @@ import { useRouter } from 'next/navigation';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = supabaseBrowser();
 
-  async function onSubmit(e: React.FormEvent) {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setLoading(true);
+    setMessage(null);
 
     try {
-      const supabase = supabaseBrowser();
+      // 🔑 Guardamos el correo en sessionStorage para el reenvío seguro
+      sessionStorage.setItem('melodya:lastEmail', email);
 
-      const redirect =
-        (process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || window.location.origin) +
-        '/auth/callback';
+      const origin = window.location.origin;
 
-      const { error: err } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          shouldCreateUser: true,
-          emailRedirectTo: redirect,
+          emailRedirectTo: `${origin}/auth/callback`,
         },
       });
 
-      if (err) throw err;
-
-      // guardo el último correo para reenvío “seguro” desde /auth/callback si lo usas
-      try {
-        localStorage.setItem('sb-last-email', email);
-      } catch {}
-      setSent(true);
-    } catch (e: any) {
-      setError(e?.message ?? 'No se pudo enviar el enlace.');
+      if (error) {
+        setMessage(error.message);
+      } else {
+        setMessage('Revisa tu correo y abre el enlace mágico 📩');
+      }
+    } catch (err: any) {
+      setMessage('Error inesperado: ' + err.message);
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <main className="container mx-auto max-w-md p-6">
-      <h1 className="text-2xl font-bold mb-4">Iniciar sesión</h1>
+    <div style={{ maxWidth: 400, margin: '50px auto', textAlign: 'center' }}>
+      <h2>Iniciar sesión en Melodya</h2>
+      <form onSubmit={handleLogin}>
+        <input
+          type="email"
+          placeholder="Tu correo electrónico"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          style={{
+            width: '100%',
+            padding: '10px',
+            margin: '10px 0',
+            borderRadius: '6px',
+            border: '1px solid #ccc',
+          }}
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '10px',
+            background: '#111',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          {loading ? 'Enviando...' : 'Enviar enlace mágico'}
+        </button>
+      </form>
 
-      {sent ? (
-        <p className="text-sm">
-          Te enviamos un enlace mágico a <b>{email}</b>. Revísalo y ábrelo con un clic normal.
-        </p>
-      ) : (
-        <form onSubmit={onSubmit} className="space-y-3">
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="tucorreo@ejemplo.com"
-            className="w-full rounded border px-3 py-2"
-          />
-          <button type="submit" className="btn btn-primary">Enviar enlace mágico</button>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-        </form>
-      )}
-    </main>
+      {message && <p style={{ marginTop: 20 }}>{message}</p>}
+    </div>
   );
 }
